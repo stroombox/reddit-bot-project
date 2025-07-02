@@ -1,3 +1,35 @@
+import os, json, base64
+from github import Github, GithubException
+
+# — Fetch or initialize our JSON “DB” on GitHub —
+gh    = Github(os.environ["GH_TOKEN"])
+repo  = gh.get_repo("stroombox/reddit-bot-project")
+path  = "posted_submissions.json"
+
+try:
+    contents = repo.get_contents(path, ref="main")
+    posted   = json.loads(base64.b64decode(contents.content).decode())
+    sha      = contents.sha
+except GithubException:
+    posted = []
+    sha    = None
+
+# … your existing scraping logic runs here, filling new_ids = […] …
+
+# — After posting, write back to GitHub —
+for sid in new_ids:
+    if sid not in posted:
+        posted.append(sid)
+
+updated = json.dumps(posted, indent=2)
+if sha:
+    repo.update_file(path, "update posted IDs", updated, sha, branch="main")
+else:
+    repo.create_file(path, "create posted IDs", updated, branch="main")
+
+print(f"Wrote {len(new_ids)} new IDs; total is now {len(posted)}.")
+
+
 import praw
 import os
 import requests
