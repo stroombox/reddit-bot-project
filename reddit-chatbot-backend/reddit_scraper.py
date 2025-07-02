@@ -29,12 +29,11 @@ except GithubException:
 posted_ids = set(posted)
 
 # — 2) Reddit & Flask creds — 
-REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
-REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
-REDDIT_USERNAME      = os.getenv("REDDIT_USERNAME")
-REDDIT_PASSWORD      = os.getenv("REDDIT_PASSWORD")
-REDDIT_USER_AGENT    = os.getenv("REDDIT_USER_AGENT")
-FLASK_BACKEND_URL    = os.getenv("FLASK_BACKEND_URL")
+REDDIT_CLIENT_ID      = os.getenv("REDDIT_CLIENT_ID")
+REDDIT_CLIENT_SECRET  = os.getenv("REDDIT_CLIENT_SECRET")
+REDDIT_REFRESH_TOKEN  = os.getenv("REDDIT_REFRESH_TOKEN")
+REDDIT_USER_AGENT     = os.getenv("REDDIT_USER_AGENT")
+FLASK_BACKEND_URL     = os.getenv("FLASK_BACKEND_URL")
 
 # Ensure required env vars are present
 for var in [
@@ -49,15 +48,15 @@ for var in [
         print(f"❌ Missing {var} – exiting.")
         exit(1)
 
-
-# Initialize Reddit client **with** login
+# Initialize Reddit client with refresh token
 reddit = praw.Reddit(
-    client_id=REDDIT_CLIENT_ID,
-    client_secret=REDDIT_CLIENT_SECRET,
-    username=REDDIT_USERNAME,
-    password=REDDIT_PASSWORD,
-    user_agent=REDDIT_USER_AGENT
+    client_id     = REDDIT_CLIENT_ID,
+    client_secret = REDDIT_CLIENT_SECRET,
+    refresh_token = REDDIT_REFRESH_TOKEN,
+    user_agent    = REDDIT_USER_AGENT
 )
+
+BOT_USERNAME = reddit.user.me().name.lower()
 
 # Keywords for relevance
 KEYWORDS = [
@@ -77,35 +76,38 @@ def get_new_smp_posts(subreddit_name, posted_ids, limit=25):
 
         # skip if our bot already commented
         sub.comments.replace_more(limit=0)
-        for comment in sub.comments.list():
-            if comment.author and comment.author.name.lower()==REDDIT_USERNAME.lower():
-                # we already replied here
-                break
-        else:
-            # only collect if no break occurred
-            tl = sub.title.lower()
-            bl = sub.selftext.lower()
-            if subreddit_name.lower()=="smpchat" or any(k in tl or k in bl for k in KEYWORDS):
-                post_info = {
-                    "id": sub.id,
-                    "title": sub.title,
-                    "selftext": sub.selftext,
-                    "permalink": f"https://reddit.com{sub.permalink}",
-                    "subreddit": sub.subreddit.display_name,
-                    "url": sub.url,
-                    "image_urls": []
-                }
-                # handle galleries
-                if hasattr(sub, "gallery_data") and sub.gallery_data:
-                    for item in sub.gallery_data["items"]:
-                        mid  = item.get("media_id")
-                        meta = sub.media_metadata.get(mid, {})
-                        if meta.get("s",{}).get("u"):
-                            post_info["image_urls"].append(meta["s"]["u"])
-                elif not sub.is_self and sub.url.lower().endswith((".jpg",".png",".gif")):
-                    post_info["image_urls"].append(sub.url)
+        if any(
+            comment.author and comment.author.name.lower() == BOT_USERNAME
+            for comment in sub.comments.list()
+        ):
+            continue
 
-                new_posts.append(post_info)
+        tl = sub.title.lower()
+        bl = sub.selftext.lower()
+        if subreddit_name.lower()!="smpchat" and not any(k in tl or k in bl for k in KEYWORDS):
+            continue
+
+        post_info = {
+            "id": sub.id,
+            "title": sub.title,
+            "selftext": sub.selftext,
+            "permalink": f"https://reddit.com{sub.permalink}",
+            "subreddit": sub.subreddit.display_name,
+            "url": sub.url,
+            "image_urls": []
+        }
+
+        # handle galleries
+        if hasattr(sub, "gallery_data") and sub.gallery_data:
+            for item in sub.gallery_data["items"]:
+                mid  = item.get("media_id")
+                meta = sub.media_metadata.get(mid, {})
+                if meta.get("s",{}).get("u"):
+                    post_info["image_urls"].append(meta["s"]["u"])
+        elif not sub.is_self and sub.url.lower().endswith((".jpg",".png",".gif")):
+            post_info["image_urls"].append(sub.url)
+
+        new_posts.append(post_info)
 
     return new_posts
 
