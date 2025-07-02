@@ -72,25 +72,24 @@ if not BASE_LLM_PROMPT_TEXT:
 else:
     print("Successfully loaded LLM prompt from llm_prompt.txt.")
 
-# --- Reddit API Credentials (for posting) ---
-REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
+# --- Reddit API Credentials (for posting) via refresh token ---
+REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
-REDDIT_USERNAME = os.getenv("REDDIT_USERNAME")
-REDDIT_PASSWORD = os.getenv("REDDIT_PASSWORD")
-REDDIT_USER_AGENT = f"desktop:smp_bot_for_{REDDIT_USERNAME}:v0.1 (by /u/{REDDIT_USERNAME})"
+REDDIT_REFRESH_TOKEN = os.getenv("REDDIT_REFRESH_TOKEN")
+REDDIT_USER_AGENT    = os.getenv("REDDIT_USER_AGENT")
 
-if all([REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, REDDIT_PASSWORD]):
+if all([REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_REFRESH_TOKEN, REDDIT_USER_AGENT]):
     reddit_poster = praw.Reddit(
-        client_id=REDDIT_CLIENT_ID,
-        client_secret=REDDIT_CLIENT_SECRET,
-        username=REDDIT_USERNAME,
-        password=REDDIT_PASSWORD,
-        user_agent=REDDIT_USER_AGENT
+        client_id     = REDDIT_CLIENT_ID,
+        client_secret = REDDIT_CLIENT_SECRET,
+        refresh_token = REDDIT_REFRESH_TOKEN,
+        user_agent    = REDDIT_USER_AGENT
     )
-    print(f"PRAW instance for posting configured for user: /u/{REDDIT_USERNAME}")
+    print("PRAW instance for posting configured with refresh token")
 else:
-    print("FATAL ERROR: Missing one or more Reddit credentials in environment variables.")
+    print("FATAL ERROR: Missing one or more Reddit posting credentials.")
     reddit_poster = None
+
 
 # --- In-memory storage for posts ---
 pending_suggestions = {}
