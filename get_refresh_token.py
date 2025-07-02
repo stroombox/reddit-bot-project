@@ -1,9 +1,9 @@
 import praw
 
-CLIENT_ID     = "<YOUR_CLIENT_ID>"
-CLIENT_SECRET = "<YOUR_CLIENT_SECRET>"
+CLIENT_ID     = "<LIMpbhTAYeb9ERnFGU0ryA>"
+CLIENT_SECRET = "<PKaho8HfTu5mdObB653t21NGnwWKGQ>"
 REDIRECT_URI  = "http://localhost:8080"
-USER_AGENT    = "refresh-token-generator by u/YourRedditUsername"
+USER_AGENT    = "refresh-token-generator by /u/Alex_Ash_"
 
 reddit = praw.Reddit(
     client_id     = CLIENT_ID,
