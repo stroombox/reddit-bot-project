@@ -7,13 +7,13 @@ from dotenv import load_dotenv
 import praw
 import requests
 
-# Load local .env (for dev); in Render it will just skip if none
+# Load local .env (for dev); in Render it will skip if none
 load_dotenv()
 
 # — 1) GitHub JSON “database” setup — 
-GH_TOKEN  = os.getenv("GH_TOKEN")
-REPO_NAME = "stroombox/reddit-bot-project"
-FILE_PATH = "posted_submissions.json"
+GH_TOKEN   = os.getenv("GH_TOKEN")
+REPO_NAME  = "stroombox/reddit-bot-project"
+FILE_PATH  = "posted_submissions.json"
 
 gh   = Github(GH_TOKEN)
 repo = gh.get_repo(REPO_NAME)
@@ -31,19 +31,31 @@ posted_ids = set(posted)
 # — 2) Reddit & Flask creds — 
 REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
+REDDIT_USERNAME      = os.getenv("REDDIT_USERNAME")
+REDDIT_PASSWORD      = os.getenv("REDDIT_PASSWORD")
 REDDIT_USER_AGENT    = os.getenv("REDDIT_USER_AGENT")
 FLASK_BACKEND_URL    = os.getenv("FLASK_BACKEND_URL")
 
-# Check that all env vars are present
-for var in ["GH_TOKEN","REDDIT_CLIENT_ID","REDDIT_CLIENT_SECRET","REDDIT_USER_AGENT","FLASK_BACKEND_URL"]:
+# Ensure required env vars are present
+for var in [
+    "GH_TOKEN",
+    "REDDIT_CLIENT_ID",
+    "REDDIT_CLIENT_SECRET",
+    "REDDIT_USERNAME",
+    "REDDIT_PASSWORD",
+    "REDDIT_USER_AGENT",
+    "FLASK_BACKEND_URL"
+]:
     if not os.getenv(var):
         print(f"❌ Missing {var} – exiting.")
         exit(1)
 
-# Initialize Reddit client
+# Initialize Reddit client **with** login
 reddit = praw.Reddit(
     client_id=REDDIT_CLIENT_ID,
     client_secret=REDDIT_CLIENT_SECRET,
+    username=REDDIT_USERNAME,
+    password=REDDIT_PASSWORD,
     user_agent=REDDIT_USER_AGENT
 )
 
@@ -54,58 +66,51 @@ KEYWORDS = [
 ]
 
 def get_new_smp_posts(subreddit_name, posted_ids, limit=25):
-    """
-    Fetch new relevant posts from a subreddit, skipping old or already-posted.
-    """
     now    = time.time()
     window = 3*24*60*60 if subreddit_name.lower()=="smpchat" else 24*60*60
     cutoff = now - window
-
     new_posts = []
+
     for sub in reddit.subreddit(subreddit_name).new(limit=limit):
         if sub.created_utc < cutoff or sub.id in posted_ids:
             continue
 
-        # Skip if bot already commented
+        # skip if our bot already commented
         sub.comments.replace_more(limit=0)
-        if any(
-            comment.author and comment.author.name.lower()==reddit.user.me().name.lower()
-            for comment in sub.comments.list()
-        ):
-            continue
+        for comment in sub.comments.list():
+            if comment.author and comment.author.name.lower()==REDDIT_USERNAME.lower():
+                # we already replied here
+                break
+        else:
+            # only collect if no break occurred
+            tl = sub.title.lower()
+            bl = sub.selftext.lower()
+            if subreddit_name.lower()=="smpchat" or any(k in tl or k in bl for k in KEYWORDS):
+                post_info = {
+                    "id": sub.id,
+                    "title": sub.title,
+                    "selftext": sub.selftext,
+                    "permalink": f"https://reddit.com{sub.permalink}",
+                    "subreddit": sub.subreddit.display_name,
+                    "url": sub.url,
+                    "image_urls": []
+                }
+                # handle galleries
+                if hasattr(sub, "gallery_data") and sub.gallery_data:
+                    for item in sub.gallery_data["items"]:
+                        mid  = item.get("media_id")
+                        meta = sub.media_metadata.get(mid, {})
+                        if meta.get("s",{}).get("u"):
+                            post_info["image_urls"].append(meta["s"]["u"])
+                elif not sub.is_self and sub.url.lower().endswith((".jpg",".png",".gif")):
+                    post_info["image_urls"].append(sub.url)
 
-        tl = sub.title.lower()
-        bl = sub.selftext.lower()
-        if subreddit_name.lower()!="smpchat" and not any(k in tl or k in bl for k in KEYWORDS):
-            continue
-
-        post_info = {
-            "id": sub.id,
-            "title": sub.title,
-            "selftext": sub.selftext,
-            "permalink": f"https://reddit.com{sub.permalink}",
-            "subreddit": sub.subreddit.display_name,
-            "url": sub.url,
-            "image_urls": []
-        }
-
-        # Handle galleries
-        if hasattr(sub, "gallery_data") and sub.gallery_data:
-            for item in sub.gallery_data["items"]:
-                mid = item.get("media_id")
-                meta = sub.media_metadata.get(mid, {})
-                if meta.get("s",{}).get("u"):
-                    post_info["image_urls"].append(meta["s"]["u"])
-        elif not sub.is_self and sub.url.lower().endswith((".jpg",".jpeg",".png",".gif")):
-            post_info["image_urls"].append(sub.url)
-
-        new_posts.append(post_info)
+                new_posts.append(post_info)
 
     return new_posts
 
 if __name__ == "__main__":
-    # 3) Scrape each subreddit
-    subs = ["SMPchat","Hairloss","bald","tressless"]
+    subs    = ["SMPchat","Hairloss","bald","tressless"]
     all_new = []
     for s in subs:
         posts = get_new_smp_posts(s, posted_ids, limit=50)
@@ -114,7 +119,6 @@ if __name__ == "__main__":
 
     print(f"Found {len(all_new)} total new posts.")
 
-    # 4) Send to Flask backend & collect fresh IDs
     new_ids = []
     for post in all_new:
         payload = {
@@ -132,7 +136,7 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"❌ Failed to send {post['title']}: {e}")
 
-    # 5) Update GitHub JSON “DB”
+    # Write back to GitHub JSON “DB”
     for sid in new_ids:
         if sid not in posted:
             posted.append(sid)
