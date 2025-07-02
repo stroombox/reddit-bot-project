@@ -7,13 +7,13 @@ from dotenv import load_dotenv
 import praw
 import requests
 
-# Load local .env (for dev); in Render it will skip if none
+# Load local .env (for dev); in Render it will just skip if none
 load_dotenv()
 
-# — 1) GitHub JSON “database” setup — 
-GH_TOKEN   = os.getenv("GH_TOKEN")
-REPO_NAME  = "stroombox/reddit-bot-project"
-FILE_PATH  = "posted_submissions.json"
+# — 1) GitHub JSON “database” setup —
+GH_TOKEN  = os.getenv("GH_TOKEN")
+REPO_NAME = "stroombox/reddit-bot-project"
+FILE_PATH = "posted_submissions.json"
 
 gh   = Github(GH_TOKEN)
 repo = gh.get_repo(REPO_NAME)
@@ -28,12 +28,12 @@ except GithubException:
 
 posted_ids = set(posted)
 
-# — 2) Reddit & Flask creds — 
-REDDIT_CLIENT_ID      = os.getenv("REDDIT_CLIENT_ID")
-REDDIT_CLIENT_SECRET  = os.getenv("REDDIT_CLIENT_SECRET")
-REDDIT_REFRESH_TOKEN  = os.getenv("REDDIT_REFRESH_TOKEN")
-REDDIT_USER_AGENT     = os.getenv("REDDIT_USER_AGENT")
-FLASK_BACKEND_URL     = os.getenv("FLASK_BACKEND_URL")
+# — 2) Reddit & Flask creds —
+REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
+REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
+REDDIT_REFRESH_TOKEN = os.getenv("REDDIT_REFRESH_TOKEN")
+REDDIT_USER_AGENT    = os.getenv("REDDIT_USER_AGENT")
+FLASK_BACKEND_URL    = os.getenv("FLASK_BACKEND_URL")
 
 # Ensure required env vars are present
 for var in [
@@ -56,6 +56,7 @@ reddit = praw.Reddit(
     user_agent    = REDDIT_USER_AGENT
 )
 
+# Grab our bot’s username for skip-logic
 BOT_USERNAME = reddit.user.me().name.lower()
 
 # Keywords for relevance
@@ -104,7 +105,7 @@ def get_new_smp_posts(subreddit_name, posted_ids, limit=25):
                 meta = sub.media_metadata.get(mid, {})
                 if meta.get("s",{}).get("u"):
                     post_info["image_urls"].append(meta["s"]["u"])
-        elif not sub.is_self and sub.url.lower().endswith((".jpg",".png",".gif")):
+        elif not sub.is_self and sub.url.lower().endswith((".jpg",".jpeg",".png",".gif")):
             post_info["image_urls"].append(sub.url)
 
         new_posts.append(post_info)
