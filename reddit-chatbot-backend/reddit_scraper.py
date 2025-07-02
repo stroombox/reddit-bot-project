@@ -1,64 +1,85 @@
-import os, json, base64
+import os
+import json
+import base64
+import time
 from github import Github, GithubException
-<<<<<<< HEAD
-=======
-
-# — Fetch or initialize our JSON “DB” on GitHub —
-gh    = Github(os.environ["GH_TOKEN"])
-repo  = gh.get_repo("stroombox/reddit-bot-project")
-path  = "posted_submissions.json"
-
-try:
-    contents = repo.get_contents(path, ref="main")
-    posted   = json.loads(base64.b64decode(contents.content).decode())
-    sha      = contents.sha
-except GithubException:
-    posted = []
-    sha    = None
-
-# … your existing scraping logic runs here, filling new_ids = […] …
-
-# — After posting, write back to GitHub —
-for sid in new_ids:
-    if sid not in posted:
-        posted.append(sid)
-
-updated = json.dumps(posted, indent=2)
-if sha:
-    repo.update_file(path, "update posted IDs", updated, sha, branch="main")
-else:
-    repo.create_file(path, "create posted IDs", updated, branch="main")
-
-print(f"Wrote {len(new_ids)} new IDs; total is now {len(posted)}.")
-
-
->>>>>>> d799633eedb6f5bdb425bc05b3b5635112120e1a
+from dotenv import load_dotenv
 import praw
 import requests
-import time
 
-# — 1) Fetch or initialize our JSON “DB” on GitHub —
-gh   = Github(os.environ["GH_TOKEN"])
-repo = gh.get_repo("stroombox/reddit-bot-project")
-path = "posted_submissions.json"
+# Load local .env (for dev); in Render it will just skip if none
+load_dotenv()
+
+# — 1) GitHub JSON “database” setup — 
+GH_TOKEN  = os.getenv("GH_TOKEN")
+REPO_NAME = "stroombox/reddit-bot-project"
+FILE_PATH = "posted_submissions.json"
+
+gh   = Github(GH_TOKEN)
+repo = gh.get_repo(REPO_NAME)
 
 try:
-    contents = repo.get_contents(path, ref="main")
+    contents = repo.get_contents(FILE_PATH, ref="main")
     posted   = json.loads(base64.b64decode(contents.content).decode())
     sha      = contents.sha
 except GithubException:
     posted = []
     sha    = None
 
-# — 2) Define how to pull new posts from Reddit —
-def get_new_smp_posts(reddit, subreddit_name, posted_ids, limit=25):
-    cutoff = time.time() - (3*24*60*60 if subreddit_name.lower()=="smpchat" else 24*60*60)
-    new = []
+posted_ids = set(posted)
+
+# — 2) Reddit & Flask creds — 
+REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
+REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
+REDDIT_USER_AGENT    = os.getenv("REDDIT_USER_AGENT")
+FLASK_BACKEND_URL    = os.getenv("FLASK_BACKEND_URL")
+
+# Check that all env vars are present
+for var in ["GH_TOKEN","REDDIT_CLIENT_ID","REDDIT_CLIENT_SECRET","REDDIT_USER_AGENT","FLASK_BACKEND_URL"]:
+    if not os.getenv(var):
+        print(f"❌ Missing {var} – exiting.")
+        exit(1)
+
+# Initialize Reddit client
+reddit = praw.Reddit(
+    client_id=REDDIT_CLIENT_ID,
+    client_secret=REDDIT_CLIENT_SECRET,
+    user_agent=REDDIT_USER_AGENT
+)
+
+# Keywords for relevance
+KEYWORDS = [
+    "smp","hair","scalp","bald","follicle","loss","density",
+    "microblading","tattoo","pigmentation","hairline","scar","scars"
+]
+
+def get_new_smp_posts(subreddit_name, posted_ids, limit=25):
+    """
+    Fetch new relevant posts from a subreddit, skipping old or already-posted.
+    """
+    now    = time.time()
+    window = 3*24*60*60 if subreddit_name.lower()=="smpchat" else 24*60*60
+    cutoff = now - window
+
+    new_posts = []
     for sub in reddit.subreddit(subreddit_name).new(limit=limit):
         if sub.created_utc < cutoff or sub.id in posted_ids:
             continue
-        # (your keyword logic here…)
-        new.append({
+
+        # Skip if bot already commented
+        sub.comments.replace_more(limit=0)
+        if any(
+            comment.author and comment.author.name.lower()==reddit.user.me().name.lower()
+            for comment in sub.comments.list()
+        ):
+            continue
+
+        tl = sub.title.lower()
+        bl = sub.selftext.lower()
+        if subreddit_name.lower()!="smpchat" and not any(k in tl or k in bl for k in KEYWORDS):
+            continue
+
+        post_info = {
             "id": sub.id,
             "title": sub.title,
             "selftext": sub.selftext,
@@ -66,58 +87,60 @@ def get_new_smp_posts(reddit, subreddit_name, posted_ids, limit=25):
             "subreddit": sub.subreddit.display_name,
             "url": sub.url,
             "image_urls": []
-        })
-    return new
+        }
 
-# — 3) Main run: authenticate & scrape —
+        # Handle galleries
+        if hasattr(sub, "gallery_data") and sub.gallery_data:
+            for item in sub.gallery_data["items"]:
+                mid = item.get("media_id")
+                meta = sub.media_metadata.get(mid, {})
+                if meta.get("s",{}).get("u"):
+                    post_info["image_urls"].append(meta["s"]["u"])
+        elif not sub.is_self and sub.url.lower().endswith((".jpg",".jpeg",".png",".gif")):
+            post_info["image_urls"].append(sub.url)
+
+        new_posts.append(post_info)
+
+    return new_posts
+
 if __name__ == "__main__":
-    # (1) Check creds
-    for var in ("REDDIT_CLIENT_ID","REDDIT_CLIENT_SECRET","REDDIT_USER_AGENT","GH_TOKEN","FLASK_BACKEND_URL"):
-        if not os.getenv(var):
-            print(f"❌ Missing {var} – exiting."); exit(1)
-
-    # (2) Load posted IDs from GitHub
-    posted_ids = set(posted)
-
-    # (3) Connect to Reddit
-    reddit = praw.Reddit(
-        client_id=os.getenv("REDDIT_CLIENT_ID"),
-        client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
-        user_agent=os.getenv("REDDIT_USER_AGENT")
-    )
-
-    # (4) Scrape each subreddit
+    # 3) Scrape each subreddit
+    subs = ["SMPchat","Hairloss","bald","tressless"]
     all_new = []
-    for name in ["SMPchat","Hairloss","bald","tressless"]:
-        all_new += get_new_smp_posts(reddit, name, posted_ids, limit=50)
+    for s in subs:
+        posts = get_new_smp_posts(s, posted_ids, limit=50)
+        print(f"Fetched {len(posts)} new from r/{s}")
+        all_new.extend(posts)
 
-    print(f"Found {len(all_new)} new posts.")
+    print(f"Found {len(all_new)} total new posts.")
 
-    # (5) Send to your Flask and update GitHub JSON
+    # 4) Send to Flask backend & collect fresh IDs
     new_ids = []
     for post in all_new:
-        resp = requests.post(os.getenv("FLASK_BACKEND_URL"), json={
+        payload = {
             "redditPostTitle": post["title"],
             "subreddit": post["subreddit"],
             "redditPostSelftext": post["selftext"],
             "redditPostUrl": post["permalink"],
             "image_urls": post["image_urls"]
-        })
-        if resp.ok:
-            new_ids.append(post["id"])
+        }
+        try:
+            r = requests.post(FLASK_BACKEND_URL, json=payload)
+            r.raise_for_status()
             print(f"✅ Sent: {post['title']}")
-        else:
-            print(f"❌ Failed to send: {post['title']}")
+            new_ids.append(post["id"])
+        except Exception as e:
+            print(f"❌ Failed to send {post['title']}: {e}")
 
-    # (6) Write back any brand-new IDs
+    # 5) Update GitHub JSON “DB”
     for sid in new_ids:
         if sid not in posted:
             posted.append(sid)
 
     updated = json.dumps(posted, indent=2)
     if sha:
-        repo.update_file(path, "update posted IDs", updated, sha, branch="main")
+        repo.update_file(FILE_PATH, "update posted IDs", updated, sha, branch="main")
     else:
-        repo.create_file(path, "create posted IDs", updated, branch="main")
+        repo.create_file(FILE_PATH, "create posted IDs", updated, branch="main")
 
     print(f"🔨 Wrote {len(new_ids)} new IDs; total is now {len(posted)}.")
