@@ -33,7 +33,7 @@ REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
 REDDIT_REFRESH_TOKEN = os.getenv("REDDIT_REFRESH_TOKEN")
 REDDIT_USER_AGENT    = os.getenv("REDDIT_USER_AGENT")
-# STRIP here to remove any trailing newline or space
+# Strip trailing whitespace/newlines here
 FLASK_BACKEND_URL    = os.getenv("FLASK_BACKEND_URL", "").strip()
 
 # Ensure required env vars are present
