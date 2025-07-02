@@ -1,0 +1,11 @@
+# Secrets file
+.env
+
+# Python virtual environment
+venv/
+
+# Python cache
+__pycache__/
+
+# SQLite Database
+bot_data.db
