@@ -41,14 +41,14 @@ for var in [
     "GH_TOKEN",
     "REDDIT_CLIENT_ID",
     "REDDIT_CLIENT_SECRET",
-    "REDDIT_USERNAME",
-    "REDDIT_PASSWORD",
+    "REDDIT_REFRESH_TOKEN",
     "REDDIT_USER_AGENT",
     "FLASK_BACKEND_URL"
 ]:
     if not os.getenv(var):
         print(f"❌ Missing {var} – exiting.")
         exit(1)
+
 
 # Initialize Reddit client **with** login
 reddit = praw.Reddit(
