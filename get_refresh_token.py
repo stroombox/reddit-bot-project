@@ -2,7 +2,7 @@ import praw
 
 CLIENT_ID     = "<YOUR_CLIENT_ID>"
 CLIENT_SECRET = "<YOUR_CLIENT_SECRET>"
-REDIRECT_URI  = "http://localhost:8080"   # any localhost callback works
+REDIRECT_URI  = "http://localhost:8080"
 USER_AGENT    = "refresh-token-generator by u/YourRedditUsername"
 
 reddit = praw.Reddit(
@@ -12,14 +12,14 @@ reddit = praw.Reddit(
     user_agent    = USER_AGENT
 )
 
-# 1) Generate the URL and open it in your browser:
+# 1) Open this URL in your browser and approve the app:
 scopes = ["identity", "read", "submit"]
-url = reddit.auth.url(scopes, "random_state", "permanent")
+url = reddit.auth.url(scopes, "dummy_state", "permanent")
 print("1) Open this URL in your browser:\n\n", url)
 
-# 2) Authorize the app; after you click Allow, Reddit will redirect to localhost with a ?code=VALUE
-code = input("\n2) Paste the “code” query-param here: ").strip()
+# 2) After clicking Allow, you’ll be redirected to localhost with ?code=XYZ
+code = input("\n2) Paste the “code” part here and press Enter: ").strip()
 
-# 3) Exchange the code for a refresh token
+# 3) Exchange that code for a refresh token
 refresh_token = reddit.auth.authorize(code)
-print("\n🔑 Your refresh token is:\n", refresh_token)
+print("\n🎉 Your NEW refresh token is:\n", refresh_token)
