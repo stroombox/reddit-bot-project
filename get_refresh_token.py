@@ -1,7 +1,7 @@
 import praw
 
-CLIENT_ID     = "<LIMpbhTAYeb9ERnFGU0ryA>"
-CLIENT_SECRET = "<PKaho8HfTu5mdObB653t21NGnwWKGQ>"
+CLIENT_ID     = "LIMpbhTAYeb9ERnFGU0ryA"
+CLIENT_SECRET = "PKaho8HfTu5mdObB653t21NGnwWKGQ"
 REDIRECT_URI  = "http://localhost:8080"
 USER_AGENT    = "refresh-token-generator by /u/Alex_Ash_"
 
