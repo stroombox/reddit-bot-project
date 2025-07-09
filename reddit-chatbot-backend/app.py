@@ -22,7 +22,6 @@ def get_db_connection():
 def init_db():
     with get_db_connection() as conn:
         c = conn.cursor()
-        # Already-posted table
         c.execute('''
             CREATE TABLE IF NOT EXISTS posted_submissions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,7 +29,6 @@ def init_db():
                 timestamp REAL DEFAULT (strftime('%s','now'))
             )
         ''')
-        # Suggestions table
         c.execute('''
             CREATE TABLE IF NOT EXISTS suggestions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,7 +43,6 @@ def init_db():
                 added_at REAL DEFAULT (strftime('%s','now'))
             )
         ''')
-        # Settings table (unchanged)
         c.execute('''
             CREATE TABLE IF NOT EXISTS app_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,6 +65,20 @@ else:
     print("FATAL ERROR: GOOGLE_API_KEY not found.")
     llm_model = None
 
+# ─── Load Real Prompt ─────────────────────────────────────────────────────────
+PROMPT_PATH = '/mnt/data/llm_prompt.txt'
+with open(PROMPT_PATH, 'r', encoding='utf-8') as f:
+    LLM_PROMPT = f.read()
+
+def build_llm_prompt(post_title, post_selftext, post_url, image_urls, user_thought):
+    return LLM_PROMPT.format(
+        post_title=post_title,
+        post_selftext=post_selftext or "[No body content]",
+        post_url=post_url,
+        image_urls=', '.join(image_urls) if image_urls else "[No images]",
+        user_thought=user_thought
+    )
+
 # ─── Reddit Poster Setup ──────────────────────────────────────────────────────
 REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
@@ -88,9 +99,7 @@ else:
 
 # ─── Helper: Extract submission ID from permalink ─────────────────────────────
 def extract_submission_id(permalink):
-    # permalink looks like "https://reddit.com/r/xxx/comments/ID/slug"
     parts = permalink.rstrip('/').split('/')
-    # The ID is always after 'comments'
     if 'comments' in parts:
         idx = parts.index('comments')
         if len(parts) > idx + 1:
@@ -109,7 +118,7 @@ def purge_expired_suggestions():
     print("Purged expired suggestions")
     return jsonify({"message":"Expired suggestions purged"}), 200
 
-# ─── 1) List suggestions (NO DELETE HERE) ─────────────────────────────────────
+# ─── 1) List suggestions ──────────────────────────────────────────────────────
 @app.route('/suggestions', methods=['GET'])
 def get_suggestions():
     now = time.time()
@@ -128,7 +137,7 @@ def get_suggestions():
         age = now - row['added_at']
         window = 3*24*60*60 if row['subreddit'].lower() == "smpchat" else 24*60*60
         if age > window:
-            continue  # Do not delete, just don't return
+            continue
         out.append({
             "id":              row['submission_id'],
             "redditPostTitle": row['title'],
@@ -170,13 +179,6 @@ def add_suggestion():
     return jsonify({"message":"Suggestion added","id":sub_id}), 201
 
 # ─── 3) Generate LLM comment ─────────────────────────────────────────────────
-BASE_LLM_PROMPT_TEXT = """You are a Reddit bot. Analyze the following post and the user's thoughts, then provide a helpful, concise comment.
-Title: {post_title}
-Text: {post_selftext}
-Images: {image_urls}
-User thoughts: {user_thought}
-"""
-
 @app.route('/suggestions/<submission_id>/generate', methods=['POST'])
 def generate_comment_for_post(submission_id):
     if not llm_model:
@@ -193,11 +195,13 @@ def generate_comment_for_post(submission_id):
         return jsonify({"error":"Post not found"}), 404
 
     user_thought = data.get('user_thought','')
-    final_prompt = BASE_LLM_PROMPT_TEXT.format(
-        post_title   = row['title'],
-        post_selftext= row['selftext'] or "[No body content]",
-        image_urls   = ','.join(json.loads(row['image_urls'])) or "[No images]",
-        user_thought = user_thought
+    # Use real prompt builder
+    final_prompt = build_llm_prompt(
+        post_title=row['title'],
+        post_selftext=row['selftext'],
+        post_url=row['post_url'],
+        image_urls=json.loads(row['image_urls']),
+        user_thought=user_thought
     )
 
     try:
