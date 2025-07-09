@@ -1,189 +1,141 @@
-/* --- Global Styles & Dark Theme --- */
+/* ─── Glassmorphism Theme ───────────────────────────────────────────────── */
+
+:root {
+  --glass-bg: rgba(255,255,255,0.1);
+  --glass-border: rgba(255,255,255,0.2);
+  --glass-shadow: rgba(0,0,0,0.2);
+  --accent-color: #8acdea;
+  --reject-color: rgba(230,50,50,0.4);
+  --generate-color: rgba(50,230,50,0.4);
+  --direct-color: rgba(50,150,230,0.4);
+}
+
+/* BODY & APP CONTAINER */
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #121212; /* Dark background */
-  color: #e0e0e0; /* Light text */
+  padding: 0;
+  background: linear-gradient(135deg, #1e1e1e, #2e2e2e);
+  color: #fff;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .App {
-  text-align: center;
+  min-height: 100vh;
   padding: 20px;
+  box-sizing: border-box;
 }
 
-.App-header {
-  background-color: #1f1f1f;
-  padding: 20px;
-  color: white;
-  margin-bottom: 40px;
-  border-radius: 8px;
-  border: 1px solid #333;
-}
-
+/* HEADER */
 .App-header h1 {
-  margin: 0;
+  text-align: center;
   font-size: 2rem;
+  margin-bottom: 20px;
+  color: var(--accent-color);
 }
 
-/* --- Comment Card & List --- */
-.comment-list {
-  display: flex;
-  flex-direction: column;
-  gap: 25px;
-  align-items: center;
-}
-
+/* COMMENT CARD (Glass Panel) */
 .comment-card {
-  background-color: #1e1e1e;
-  border: 1px solid #333;
-  padding: 25px;
-  border-radius: 12px;
-  width: 90%;
-  max-width: 800px;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-  text-align: left;
-  transition: box-shadow 0.3s ease;
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 30px var(--glass-shadow);
+  border-radius: 16px;
+  padding: 20px;
+  margin: 20px auto;
+  max-width: 600px;
 }
 
-.comment-card:hover {
-  box-shadow: 0 6px 12px rgba(0,0,0,0.3);
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 15px;
-  border-bottom: 1px solid #333;
-  padding-bottom: 15px;
-}
-
-.card-header h3 {
-  margin: 0;
-  font-size: 1.4rem;
-}
-
-.card-header h3 a {
-  color: #bb86fc; /* A nice purple for links */
-  text-decoration: none;
-  transition: color 0.3s ease;
-}
-
-.card-header h3 a:hover {
-  color: #d1b3ff;
-  text-decoration: underline;
-}
-
+/* SUBREDDIT TAG */
 .subreddit-tag {
-  background-color: #333;
-  color: #bb86fc;
-  padding: 5px 10px;
-  border-radius: 15px;
-  font-size: 0.85em;
-  font-weight: bold;
-  white-space: nowrap;
-  flex-shrink: 0;
+  background: var(--glass-bg);
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  display: inline-block;
+  margin-left: 10px;
 }
 
+/* SELF-TEXT PREVIEW */
 .selftext-preview {
-  font-size: 1em;
-  color: #b0b0b0;
-  margin-top: 5px;
-  margin-bottom: 20px;
-  line-height: 1.5;
-  background-color: #2a2a2a;
-  padding: 15px;
-  border-radius: 8px;
+  margin: 10px 0;
+  font-size: 0.95rem;
 }
 
-/* --- Textareas & Labels --- */
-.textarea-label {
-  margin-top: 15px;
-  margin-bottom: 8px;
-  font-size: 0.9em;
-  font-weight: bold;
-  color: #e0e0e0;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-textarea {
-  width: calc(100% - 22px); /* Full width minus padding */
-  padding: 10px;
-  margin-bottom: 20px;
-  border: 1px solid #444;
-  border-radius: 8px;
-  font-size: 1rem;
-  background-color: #2c2c2c;
-  color: #e0e0e0;
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
-}
-
-textarea:focus {
-  outline: none;
-  border-color: #bb86fc;
-  box-shadow: 0 0 0 2px rgba(187, 134, 252, 0.2);
-}
-
-/* --- Buttons & Actions --- */
-.actions {
+/* IMAGE PREVIEWS */
+.image-preview-container {
   display: flex;
-  gap: 15px;
-  margin-top: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0;
 }
-
-.actions button {
-  color: white;
-  border: none;
-  padding: 12px 24px;
+.post-image-preview {
+  max-width: 100px;
+  max-height: 100px;
+  margin-right: 10px;
+  margin-bottom: 10px;
   border-radius: 8px;
-  cursor: pointer;
-  font-size: 1rem;
-  font-weight: bold;
-  transition: transform 0.2s ease, opacity 0.3s ease;
+  border: 1px solid var(--glass-border);
 }
 
-.actions button:hover {
-  opacity: 0.9;
+/* TEXTAREAS */
+.initial-thoughts-textarea,
+.comment-card textarea {
+  width: 100%;
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  color: #fff;
+  padding: 10px;
+  border-radius: 8px;
+  margin: 10px 0;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+/* BUTTONS */
+button {
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  margin: 5px;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.3s, transform 0.2s;
+  font-size: 0.95rem;
+}
+
+/* Hover effect */
+button:hover {
+  background: rgba(255,255,255,0.2);
   transform: translateY(-2px);
 }
 
-.generate-button {
-  background: linear-gradient(45deg, #3a7bd5, #00d2ff);
+/* Action button colors */
+button.reject-button {
+  border-color: var(--reject-color);
+}
+button.generate-button {
+  border-color: var(--generate-color);
+}
+button.post-direct-button {
+  border-color: var(--direct-color);
 }
 
-.post-direct-button {
-  background: linear-gradient(45deg, #6c757d, #868e96);
+/* ACTIONS ROW */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
 }
 
-.actions button[onClick*="handleAction"] {
-  background: linear-gradient(45deg, #1d976c, #93f9b9);
+/* LINKS INSIDE CARDS */
+.comment-card h3 a {
+  color: var(--accent-color);
+  text-decoration: none;
+}
+.comment-card h3 a:hover {
+  text-decoration: underline;
 }
 
-.reject-button {
-  background: linear-gradient(45deg, #d31027, #ea384d) !important;
-}
-
-
-/* --- Image Previews --- */
-.image-preview-container {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 10px;
-    margin-bottom: 15px;
-    background-color: #2a2a2a;
-    padding: 10px;
-    border-radius: 8px;
-    overflow-x: auto;
-}
-
-.post-image-preview {
-    width: 100px;
-    height: 100px;
-    border-radius: 8px;
-    object-fit: cover;
-    border: 2px solid #444;
-}
