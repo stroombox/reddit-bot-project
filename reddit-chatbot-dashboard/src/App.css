@@ -1,190 +1,158 @@
-/* =====================================================
-   Variables
-   ===================================================== */
+/* src/App.css */
+/* --------- Dark Glass Theme (Nord-inspired) --------- */
 :root {
-  /* Dark-mode gradients */
-  --gradient-dark-start: #0B144C;
-  --gradient-dark-end:   #38386B;
-
-  /* Frosted-glass settings */
-  --glass-bg:       rgba( 25,  28,  38, 0.40);
-  --glass-border:   rgba(255, 255, 255, 0.18);
-  --glass-blur:     20px;
-  --glass-shadow:   rgba(  0,   0,   0, 0.50);
-
-  /* Shiny edge highlight */
-  --glass-highlight: rgba(255,255,255,0.25);
-
-  /* Accent */
-  --accent-blue:    #2CE2FA;
-  --accent-peach:   #DE9C74;
-  --accent-coral:   #B9502D;
-
-  /* Text */
-  --text-light:     #FFFFFF;
-}
-
-/* =====================================================
-   Global
-   ===================================================== */
-* {
-  box-sizing: border-box;
+  /* Base colors */
+  --bg: #2E3440;                           /* deep background */
+  --surface: rgba(46, 52, 64, 0.6);        /* frosted card bg */
+  --surface-blur: saturate(180%) blur(20px);
+  --border: rgba(236, 239, 244, 0.08);     /* subtle border */
+  --text-primary: #ECEFF4;                 /* main text */
+  --text-secondary: #D8DEE9;               /* secondary text */
+  --accent: #88C0D0;                       /* link / primary button */
+  --accent-secondary: #81A1C1;             /* secondary button */
 }
 
 body {
   margin: 0;
-  padding: 0;
-  font-family: 'Segoe UI', Arial, sans-serif;
-  background: linear-gradient(
-    170deg,
-    var(--gradient-dark-start) 10%,
-    var(--gradient-dark-end)   90%
-  );
-  color: var(--text-light);
+  font-family: 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg);
+  color: var(--text-primary);
 }
 
-/* =====================================================
-   Glassmorphism Panel
-   ===================================================== */
-.backdrop-glass {
-  position: relative;
-  overflow: hidden;
-
-  background-color: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-
-  border: 1px solid var(--glass-border);
-  border-radius: 24px;
-
-  /* outer soft shadow */
-  box-shadow:
-    0 8px 32px var(--glass-shadow),
-    inset 0 0 0 1px var(--glass-border);
-
-  padding: 2rem;
-  margin: 1.5rem 0;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+.App {
+  min-height: 100vh;
 }
 
-.backdrop-glass:hover {
-  transform: translateY(-5px);
-  box-shadow:
-    0 12px 48px var(--glass-shadow),
-    inset 0 0 0 1px var(--glass-border);
+.App-header {
+  background: var(--surface);
+  backdrop-filter: var(--surface-blur);
+  border-bottom: 1px solid var(--border);
+  padding: 1rem;
+  text-align: center;
+  font-size: 1.75rem;
+  font-weight: bold;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-/* glossy “shine” overlay */
-.backdrop-glass::before {
-  content: "";
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(
-    circle at top left,
-    var(--glass-highlight) 0%,
-    transparent 70%
-  );
-  transform: rotate(45deg);
-  pointer-events: none;
-  opacity: 0.4;
+.comment-list {
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
 }
 
-/* =====================================================
-   Images
-   ===================================================== */
+.comment-card {
+  background: var(--surface);
+  backdrop-filter: var(--surface-blur);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.card-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.card-header h3 a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.card-header h3 a:hover {
+  text-decoration: underline;
+}
+
+.subreddit-tag {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.selftext-preview {
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
 .image-preview-container {
   display: flex;
-  flex-wrap: wrap;
   gap: 1rem;
-  justify-content: center;
-  margin: 1.5rem 0;
+  flex-wrap: wrap;
 }
 
 .post-image-preview {
-  width: 100%;
-  max-width: 280px;
-  height: 180px;
+  width: calc(50% - 0.5rem);
+  max-width: 100%;
+  height: 200px;
   object-fit: cover;
-  border-radius: 12px;
-  border: 1px solid var(--glass-border);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  border-radius: 0.75rem;
 }
 
-/* =====================================================
-   Typography
-   ===================================================== */
-h1, h2, h3, h4, h5, h6 {
-  margin: 0 0 1rem 0;
-  font-weight: 700;
-}
-
-p, a, span, label {
-  line-height: 1.5;
-  color: var(--text-light);
-}
-
-/* =====================================================
-   Buttons
-   ===================================================== */
-.button {
-  display: inline-block;
+.textarea-label {
   font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-  border-radius: 8px;
-  transition: background-color 0.3s ease, transform 0.2s ease;
+  color: var(--text-secondary);
 }
 
-.button--blue {
-  background-color: var(--accent-blue);
-  color: #111;
+.initial-thoughts-textarea,
+textarea {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  resize: vertical;
+}
+
+.actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+button {
+  font-family: inherit;
+  font-weight: 600;
+  border-radius: 0.5rem;
   padding: 0.75rem 1.5rem;
-}
-.button--blue:hover {
-  background-color: var(--accent-peach);
-  transform: translateY(-2px);
-}
-
-.button--outline {
-  background: none;
-  border: 2px solid var(--accent-coral);
-  color: var(--accent-coral);
-  padding: 0.6rem 1.2rem;
-}
-.button--outline:hover {
-  background-color: var(--accent-coral);
-  color: #fff;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: opacity 0.2s;
 }
 
-/* =====================================================
-   Layout & Utilities
-   ===================================================== */
-.container {
-  width: 90%;
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 2rem 0;
+button:hover {
+  opacity: 0.85;
 }
 
-.mt-2 { margin-top: 0.5rem; }
-.mb-4 { margin-bottom: 1.5rem; }
-
-/* =====================================================
-   Card wrapper
-   ===================================================== */
-.card {
-  overflow: hidden;
-  border-radius: 24px;
-  margin-bottom: 2rem;
+.generate-button {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: transparent;
 }
 
-/* Dark toggle (if used) */
-.toggle-dark {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 1000;
+.post-direct-button,
+.reject-button {
+  background: transparent;
+  color: var(--accent-secondary);
+}
+
+.reject-button {
+  border-color: var(--accent-secondary);
+}
+
+/* Utility for links in dark mode */
+a {
+  color: var(--accent);
 }
