@@ -1,125 +1,200 @@
-// src/App.js
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 
 function App() {
   const [pendingComments, setPendingComments] = useState([]);
   const [initialThoughts, setInitialThoughts] = useState({});
-  const [darkMode, setDarkMode] = useState(false);
 
+  // Your backend URL (set via REACT_APP_API_URL in .env or defaults to localhost)
   const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
+  // 1) Fetch pending Reddit posts from your Flask backend
   const fetchSuggestions = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/suggestions`);
-      if (!res.ok) throw new Error(`Status ${res.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       let data = await res.json();
-      // sort SMPchat first
+
+      // Move 'smpchat' posts to the top
       data.sort((a, b) => {
-        const aPri = a.subreddit.toLowerCase()==='smpchat';
-        const bPri = b.subreddit.toLowerCase()==='smpchat';
+        const aPri = a.subreddit.toLowerCase() === 'smpchat';
+        const bPri = b.subreddit.toLowerCase() === 'smpchat';
         if (aPri && !bPri) return -1;
         if (!aPri && bPri) return 1;
-        return parseInt(a.id) - parseInt(b.id);
+        return a.id.localeCompare(b.id);
       });
+
       setPendingComments(data);
-      let thoughts = {};
-      data.forEach(p => thoughts[p.id] = '');
+
+      // Initialize a blank thought for each
+      const thoughts = {};
+      data.forEach(post => { thoughts[post.id] = ''; });
       setInitialThoughts(thoughts);
     } catch (err) {
-      console.error(err);
+      console.error('Error fetching suggestions:', err);
     }
   }, [API_URL]);
 
-  useEffect(() => { fetchSuggestions() }, [fetchSuggestions]);
+  useEffect(() => {
+    fetchSuggestions();
+  }, [fetchSuggestions]);
 
+  // 2) Track what the user types before asking the LLM
   const handleInitialThoughtsChange = (id, text) => {
     setInitialThoughts(prev => ({ ...prev, [id]: text }));
   };
 
-  // ... your generateSuggestion, action handlers, edit handlers as before ...
+  // 3) Call your backend to generate an AI suggestion
+  const handleGenerateSuggestion = async (id) => {
+    const user_thought = initialThoughts[id] || '';
+    // show loading UI
+    setPendingComments(prev =>
+      prev.map(p =>
+        p.id === id ? { ...p, suggestedComment: 'Generating comment...' } : p
+      )
+    );
+
+    try {
+      const res = await fetch(`${API_URL}/suggestions/${id}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_thought })
+      });
+      if (!res.ok) throw new Error(`Gen failed ${res.status}`);
+      const { suggestedComment } = await res.json();
+
+      setPendingComments(prev =>
+        prev.map(p =>
+          p.id === id ? { ...p, suggestedComment } : p
+        )
+      );
+    } catch (err) {
+      console.error('Generation error:', err);
+      // revert UI on error
+      fetchSuggestions();
+    }
+  };
+
+  // 4) Approve / reject / direct-post handler
+  const handleAction = async (id, actionType) => {
+    let url, options;
+    const post = pendingComments.find(p => p.id === id);
+
+    if (actionType === 'approve') {
+      url = `${API_URL}/suggestions/${id}/approve-and-post`;
+      options = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved_comment: post.suggestedComment })
+      };
+    } else if (actionType === 'reject') {
+      url = `${API_URL}/suggestions/${id}`;
+      options = { method: 'DELETE' };
+    } else if (actionType === 'postDirect') {
+      if (!initialThoughts[id].trim()) {
+        return alert('Please type your thoughts before posting directly.');
+      }
+      if (!window.confirm('Post your exact thoughts?')) return;
+      url = `${API_URL}/suggestions/${id}/post-direct`;
+      options = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ direct_comment: initialThoughts[id] })
+      };
+    }
+
+    try {
+      const res = await fetch(url, options);
+      if (!res.ok) throw new Error(`Action failed ${res.status}`);
+      // remove from list
+      setPendingComments(prev => prev.filter(p => p.id !== id));
+    } catch (err) {
+      console.error(`Error in ${actionType}:`, err);
+      alert(`Failed to ${actionType}. Try again.`);
+    }
+  };
+
+  // 5) Allow manual edits of the AI suggestion before sending
+  const handleEdit = (id, newText) => {
+    setPendingComments(prev =>
+      prev.map(p =>
+        p.id === id ? { ...p, suggestedComment: newText } : p
+      )
+    );
+  };
 
   return (
-    <div className={darkMode ? 'dark-mode' : ''}>
-      {/* Dark mode toggle */}
-      <button
-        className="toggle-dark button--outline"
-        onClick={() => setDarkMode(dm => !dm)}
-      >
-        {darkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
-      </button>
+    <div className="App">
+      <header className="App-header">
+        <h1>Reddit Comment Review</h1>
+      </header>
 
-      <div className="container">
-        <header className="App-header">
-          <h1>Reddit Comment Review</h1>
-        </header>
-
+      <div className="comment-list">
         {pendingComments.length === 0 ? (
-          <p>No pending posts. Run your scraper to fetch new ones.</p>
-        ) : pendingComments.map(comment => (
-          <div key={comment.id} className="backdrop-glass mb-4">
-            <div className="card-header">
-              <h3>
-                <a href={comment.redditPostUrl} target="_blank" rel="noopener noreferrer">
-                  {comment.redditPostTitle}
-                </a>
-              </h3>
-              <span className="subreddit-tag">r/{comment.subreddit}</span>
-            </div>
-
-            {comment.redditPostSelftext?.length > 0 &&
-              <p className="selftext-preview">
-                {comment.redditPostSelftext.slice(0,150)}…
-              </p>
-            }
-
-            {/* Images if any */}
-            {comment.image_urls?.length > 0 && (
-              <div className="image-preview-container">
-                {comment.image_urls.map((url,i)=>(
-                  <img key={i} src={url} alt="" className="post-image-preview" />
-                ))}
+          <p>No pending posts. Run your scraper to load new ones.</p>
+        ) : (
+          pendingComments.map(post => (
+            <div key={post.id} className="comment-card">
+              <div className="card-header">
+                <h3>
+                  <a href={post.redditPostUrl} target="_blank" rel="noopener noreferrer">
+                    {post.redditPostTitle}
+                  </a>
+                </h3>
+                <span className="subreddit-tag">r/{post.subreddit}</span>
               </div>
-            )}
 
-            <p>Your Initial Thoughts:</p>
-            <textarea
-              rows={2}
-              className="initial-thoughts-textarea"
-              placeholder="Type your idea for the AI…"
-              value={initialThoughts[comment.id]||''}
-              onChange={e => handleInitialThoughtsChange(comment.id, e.target.value)}
-            />
+              {post.redditPostSelftext && (
+                <p className="selftext-preview">
+                  {post.redditPostSelftext.slice(0, 150)}…
+                </p>
+              )}
 
-            {comment.suggestedComment ? (
-              <>
-                <p>Suggested Comment:</p>
-                <textarea
-                  rows={5}
-                  value={comment.suggestedComment}
-                  onChange={e => handleEdit(comment.id, e.target.value)}
-                />
-                <div className="actions mt-2">
-                  <button className="button button--blue" onClick={() => handleAction(comment.id, 'approve')}>
-                    Approve & Send
-                  </button>
-                  <button className="button button--outline ml-2" onClick={() => handleAction(comment.id, 'reject')}>
-                    Reject
-                  </button>
+              {post.image_urls.length > 0 && (
+                <div className="image-preview-container">
+                  {post.image_urls.map((url, i) => (
+                    <img
+                      key={i}
+                      src={url}
+                      alt={`Post image ${i+1}`}
+                      className="post-image-preview"
+                      onError={e => { e.target.src = 'https://placehold.co/100x100?text=Img+Error'; }}
+                    />
+                  ))}
                 </div>
-              </>
-            ) : (
-              <div className="actions mt-2">
-                <button className="button button--blue" onClick={() => handleGenerateSuggestion(comment.id)}>
-                  Generate Suggestion
-                </button>
-                <button className="button button--outline ml-2" onClick={() => handleAction(comment.id, 'postDirect')}>
-                  Post My Thoughts
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
+              )}
+
+              <label>Your Initial Thoughts:</label>
+              <textarea
+                rows="2"
+                placeholder="Type your idea for the AI…"
+                value={initialThoughts[post.id] || ''}
+                onChange={e => handleInitialThoughtsChange(post.id, e.target.value)}
+                className="initial-thoughts-textarea"
+              />
+
+              {post.suggestedComment ? (
+                <>
+                  <label>Suggested Comment:</label>
+                  <textarea
+                    rows="5"
+                    value={post.suggestedComment}
+                    onChange={e => handleEdit(post.id, e.target.value)}
+                  />
+                  <div className="actions">
+                    <button onClick={() => handleAction(post.id, 'approve')}>Approve & Send</button>
+                    <button onClick={() => handleAction(post.id, 'reject')} className="reject-button">Reject</button>
+                  </div>
+                </>
+              ) : (
+                <div className="actions">
+                  <button onClick={() => handleGenerateSuggestion(post.id)}>Generate Suggestion</button>
+                  <button onClick={() => handleAction(post.id, 'postDirect')}>Post My Thoughts Directly</button>
+                </div>
+              )}
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
