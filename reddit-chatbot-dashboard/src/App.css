@@ -1,182 +1,158 @@
-/* =========================
-   VARIABLES (dark theme)
-   ========================= */
+/* =====================================================
+   Variables
+   ===================================================== */
 :root {
-  /* Page background gradient */
-  --gradient-start: #0f1020;
-  --gradient-end:   #1a2138;
+  /* Dark-mode gradients */
+  --gradient-dark-start: #0B144C;
+  --gradient-dark-end:   #38386B;
 
-  /* Frosted glass panel */
-  --glass-bg:     rgba(16, 18, 30, 0.6);
+  /* Frosted glass panel (dark) */
+  --glass-bg:     rgba(0, 0, 0, 0.30);
   --glass-border: rgba(255, 255, 255, 0.15);
-  --glass-blur:   16px;
+  --glass-blur:   12px;
 
   /* Accent colors */
-  --accent:       #4d9de0;
-  --accent-hover: #3c8ec8;
+  --accent-blue:  #2CE2FA;
+  --accent-peach: #DE9C74;
+  --accent-coral: #B9502D;
 
   /* Text */
-  --text-light:   #e0e0e0;
+  --text-light: #FFFFFF;
+  --text-dark:  #111111;
 }
 
-/* =========================
-   GLOBAL RESET & BODY
-   ========================= */
+/* =====================================================
+   Global Styles
+   ===================================================== */
 * {
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
 }
 
 body {
+  margin: 0;
+  padding: 0;
   font-family: 'Segoe UI', Arial, sans-serif;
+  background: linear-gradient(
+    170deg,
+    var(--gradient-dark-start) 10%,
+    var(--gradient-dark-end)   90%
+  );
   color: var(--text-light);
-  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
-  min-height: 100vh;
   transition: background 0.3s ease, color 0.3s ease;
 }
 
-/* =========================
-   GLASSMORPHISM CARD
-   ========================= */
-.backdrop-glass,
-.comment-card {
+/* =====================================================
+   Glassmorphism Panels
+   ===================================================== */
+.backdrop-glass {
   background-color: var(--glass-bg);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--glass-border);
-  border-radius: 16px;
+  border-radius: 12px;
   padding: 1.5rem;
-  margin: 1rem auto;
-  max-width: 800px;
+  margin: 1rem;
   transition: background-color 0.3s ease, border-color 0.3s ease;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
-/* =========================
-   LAYOUT
-   ========================= */
-.App-header {
-  text-align: center;
-  margin-top: 2rem;
-}
-.comment-list {
-  padding-bottom: 2rem;
-}
-
-/* =========================
-   IMAGE PREVIEWS
-   ========================= */
+/* =====================================================
+   Image Previews
+   ===================================================== */
 .image-preview-container {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin: 1rem 0;
+  justify-content: center;
+  margin-top: 1rem;
 }
 
 .post-image-preview {
-  flex: 1 1 200px;
-  max-width: 200px;
-  max-height: 150px;
   width: 100%;
-  height: auto;
+  max-width: 300px;
+  height: 200px;
   object-fit: cover;
   border-radius: 8px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid rgba(255,255,255,0.10);
 }
 
-/* =========================
-   TYPOGRAPHY
-   ========================= */
-h1, h2, h3 {
-  color: var(--text-light);
-  margin-bottom: 0.5rem;
-}
-
-p, label {
-  line-height: 1.5;
-  margin-bottom: 0.75rem;
-  color: var(--text-light);
-}
-
-/* =========================
-   TEXTAREAS
-   ========================= */
-textarea {
-  width: 100%;
-  background: transparent;
-  border: 1px solid var(--glass-border);
-  border-radius: 8px;
-  color: var(--text-light);
-  padding: 0.75rem;
-  resize: vertical;
-  font-family: inherit;
-  margin-bottom: 1rem;
-  transition: border-color 0.2s ease;
-}
-textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-/* =========================
-   BUTTONS
-   ========================= */
-button {
-  font-family: inherit;
-  font-size: 1rem;
-  font-weight: 600;
-  padding: 0.6rem 1.2rem;
-  margin-right: 0.5rem;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.2s ease, transform 0.1s ease;
-}
-
-button:hover {
-  transform: translateY(-1px);
-}
-
-.actions button {
-  margin-top: 0.5rem;
-}
-
-button.generate-button,
-button.button--blue {
-  background-color: var(--accent);
-  color: #fff;
-}
-button.generate-button:hover,
-button.button--blue:hover {
-  background-color: var(--accent-hover);
-}
-
-button.reject-button,
-button.button--outline {
-  background: none;
-  border: 2px solid #e54c4c;
-  color: #e54c4c;
-}
-button.reject-button:hover,
-button.button--outline:hover {
-  background-color: #e54c4c;
-  color: #fff;
-}
-
-/* =========================
-   UTILITY CLASSES
-   ========================= */
+/* =====================================================
+   Utility spacing
+   ===================================================== */
 .mt-2 { margin-top: 0.5rem; }
 .mb-4 { margin-bottom: 1rem; }
 .p-4  { padding: 1rem; }
 
-/* =========================
-   RESPONSIVE
-   ========================= */
-@media (max-width: 600px) {
-  .post-image-preview {
-    max-width: 100%;
-    max-height: 200px;
-  }
+/* =====================================================
+   Typography
+   ===================================================== */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0 0 0.75rem 0;
+  font-weight: 600;
+}
+p {
+  margin: 0 0 1rem 0;
+  line-height: 1.6;
+}
+
+/* =====================================================
+   Buttons & Links
+   ===================================================== */
+.button {
+  display: inline-block;
+  font-weight: 600;
+  text-decoration: none;
+  text-align: center;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.button--blue {
+  background-color: var(--accent-blue);
+  color: #111;
+  padding: 0.75rem 1.5rem;
+}
+.button--blue:hover {
+  background-color: var(--accent-peach);
+  transform: translateY(-2px);
+}
+
+.button--outline {
+  background: none;
+  border: 2px solid var(--accent-coral);
+  color: var(--accent-coral);
+  padding: 0.5rem 1rem;
+}
+.button--outline:hover {
+  background-color: var(--accent-coral);
+  color: #fff;
+}
+
+/* =====================================================
+   Cards & Layout
+   ===================================================== */
+.card {
+  max-width: 420px;
+  margin: 1rem auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  border-radius: 12px;
+  background: transparent;
+}
+
+.container {
+  width: 90%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 0;
+}
+
+/* =====================================================
+   Dark Mode Toggle (if you ever add one)
+   ===================================================== */
+.toggle-dark {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1000;
 }
