@@ -88,19 +88,27 @@ else:
 
 # ─── Helper: Extract submission ID from permalink ─────────────────────────────
 def extract_submission_id(permalink):
-    # permalink looks like "https://reddit.com/r/xxx/comments/ID/..."
     parts = permalink.rstrip('/').split('/')
-    # ID is the 6th segment: ['', 'r', 'xxx', 'comments', 'ID', 'slug']
     return parts[5] if len(parts) > 5 else None
 
-# ─── 1) List suggestions ──────────────────────────────────────────────────────
+# ─── Purge expired suggestions (call once daily from cron or manually) ────────
+@app.route('/purge_expired_suggestions', methods=['POST'])
+def purge_expired_suggestions():
+    now = time.time()
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute('DELETE FROM suggestions WHERE subreddit="smpchat" AND (? - added_at) > ?', (now, 3*24*60*60))
+        c.execute('DELETE FROM suggestions WHERE subreddit!="smpchat" AND (? - added_at) > ?', (now, 24*60*60))
+        conn.commit()
+    print("Purged expired suggestions")
+    return jsonify({"message":"Expired suggestions purged"}), 200
+
+# ─── 1) List suggestions (NO DELETE HERE) ─────────────────────────────────────
 @app.route('/suggestions', methods=['GET'])
 def get_suggestions():
     now = time.time()
-    rows = []
     with get_db_connection() as conn:
         c = conn.cursor()
-        # Fetch all suggestions that have NOT been posted yet
         c.execute('''
             SELECT s.* FROM suggestions s
             LEFT JOIN posted_submissions p
@@ -112,16 +120,9 @@ def get_suggestions():
     out = []
     for row in rows:
         age = now - row['added_at']
-        window = 3*24*60*60 if row['subreddit'].lower()=="smpchat" else 24*60*60
+        window = 3*24*60*60 if row['subreddit'].lower() == "smpchat" else 24*60*60
         if age > window:
-            # drop expired suggestions from DB
-            with get_db_connection() as conn:
-                conn.execute(
-                    'DELETE FROM suggestions WHERE submission_id = ?',
-                    (row['submission_id'],)
-                )
-            continue
-
+            continue  # Do not delete, just don't return
         out.append({
             "id":              row['submission_id'],
             "redditPostTitle": row['title'],
@@ -144,7 +145,6 @@ def add_suggestion():
 
     with get_db_connection() as conn:
         c = conn.cursor()
-        # Insert if not exists
         c.execute('''
             INSERT OR IGNORE INTO suggestions
             (submission_id, title, subreddit, selftext, post_url, image_urls, created_utc)
@@ -164,13 +164,19 @@ def add_suggestion():
     return jsonify({"message":"Suggestion added","id":sub_id}), 201
 
 # ─── 3) Generate LLM comment ─────────────────────────────────────────────────
+BASE_LLM_PROMPT_TEXT = """You are a Reddit bot. Analyze the following post and the user's thoughts, then provide a helpful, concise comment.
+Title: {post_title}
+Text: {post_selftext}
+Images: {image_urls}
+User thoughts: {user_thought}
+"""
+
 @app.route('/suggestions/<submission_id>/generate', methods=['POST'])
 def generate_comment_for_post(submission_id):
     if not llm_model:
         return jsonify({"error":"LLM not configured"}), 500
 
     data = request.json or {}
-    # Load existing suggestion
     with get_db_connection() as conn:
         c = conn.cursor()
         row = c.execute(
@@ -180,7 +186,6 @@ def generate_comment_for_post(submission_id):
     if not row:
         return jsonify({"error":"Post not found"}), 404
 
-    # Build prompt
     user_thought = data.get('user_thought','')
     final_prompt = BASE_LLM_PROMPT_TEXT.format(
         post_title   = row['title'],
@@ -195,7 +200,6 @@ def generate_comment_for_post(submission_id):
         if not comment:
             raise ValueError("Empty LLM response")
 
-        # Save generated comment
         with get_db_connection() as conn:
             conn.execute(
                 'UPDATE suggestions SET suggested_comment = ? WHERE submission_id = ?',
@@ -219,7 +223,6 @@ def approve_and_post_comment(submission_id):
     if not reddit_poster:
         return jsonify({"error":"Reddit poster not configured"}), 500
 
-    # Post to Reddit
     try:
         submission = reddit_poster.submission(id=submission_id)
         submission.reply(comment_text)
@@ -227,7 +230,6 @@ def approve_and_post_comment(submission_id):
         print(f"Reddit post error for {submission_id}: {e}")
         return jsonify({"error":str(e)}), 500
 
-    # Mark as posted and remove from suggestions
     now = time.time()
     with get_db_connection() as conn:
         conn.execute(
@@ -272,7 +274,6 @@ def post_direct_comment(submission_id):
         print(f"Direct post error for {submission_id}: {e}")
         return jsonify({"error":str(e)}), 500
 
-    # Mark as posted and remove suggestion
     now = time.time()
     with get_db_connection() as conn:
         conn.execute(
