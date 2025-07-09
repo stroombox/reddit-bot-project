@@ -88,8 +88,14 @@ else:
 
 # ─── Helper: Extract submission ID from permalink ─────────────────────────────
 def extract_submission_id(permalink):
+    # permalink looks like "https://reddit.com/r/xxx/comments/ID/slug"
     parts = permalink.rstrip('/').split('/')
-    return parts[5] if len(parts) > 5 else None
+    # The ID is always after 'comments'
+    if 'comments' in parts:
+        idx = parts.index('comments')
+        if len(parts) > idx + 1:
+            return parts[idx + 1]
+    return None
 
 # ─── Purge expired suggestions (call once daily from cron or manually) ────────
 @app.route('/purge_expired_suggestions', methods=['POST'])
