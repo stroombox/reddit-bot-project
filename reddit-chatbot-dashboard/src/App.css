@@ -1,141 +1,146 @@
-/* ─── Glassmorphism Theme ───────────────────────────────────────────────── */
-
+/* =====================================================
+   Variables
+   ===================================================== */
 :root {
-  --glass-bg: rgba(255,255,255,0.1);
-  --glass-border: rgba(255,255,255,0.2);
-  --glass-shadow: rgba(0,0,0,0.2);
-  --accent-color: #8acdea;
-  --reject-color: rgba(230,50,50,0.4);
-  --generate-color: rgba(50,230,50,0.4);
-  --direct-color: rgba(50,150,230,0.4);
+  /* Light-mode gradients */
+  --gradient-light-start: #84FAB0;
+  --gradient-light-end:   #8FD3F4;
+
+  /* Dark-mode gradients */
+  --gradient-dark-start: #0B144C;
+  --gradient-dark-end:   #38386B;
+
+  /* Frosted glass panel */
+  --glass-bg:     rgba(255, 255, 255, 0.20);
+  --glass-border: rgba(255, 255, 255, 0.30);
+  --glass-blur:   12px;
+
+  /* Accent colors */
+  --accent-blue:  #2CE2FA;
+  --accent-peach: #DE9C74;
+  --accent-coral: #B9502D;
+
+  /* Text */
+  --text-light: #ffffff;
+  --text-dark:  #111111;
 }
 
-/* BODY & APP CONTAINER */
+/* =====================================================
+   Global Styles
+   ===================================================== */
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   padding: 0;
-  background: linear-gradient(135deg, #1e1e1e, #2e2e2e);
-  color: #fff;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: var(--text-light);
+  background: linear-gradient(
+    135deg,
+    var(--gradient-light-start),
+    var(--gradient-light-end)
+  );
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
-.App {
-  min-height: 100vh;
-  padding: 20px;
-  box-sizing: border-box;
+body.dark-mode {
+  color: var(--text-light);
+  background: linear-gradient(
+    170deg,
+    var(--gradient-dark-start) 10%,
+    var(--gradient-dark-end)   90%
+  );
 }
 
-/* HEADER */
-.App-header h1 {
-  text-align: center;
-  font-size: 2rem;
-  margin-bottom: 20px;
-  color: var(--accent-color);
-}
-
-/* COMMENT CARD (Glass Panel) */
-.comment-card {
-  background: var(--glass-bg);
-  backdrop-filter: blur(10px);
+/* =====================================================
+   Glassmorphism Panels
+   ===================================================== */
+.backdrop-glass {
+  background-color: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--glass-border);
-  box-shadow: 0 4px 30px var(--glass-shadow);
-  border-radius: 16px;
-  padding: 20px;
-  margin: 20px auto;
-  max-width: 600px;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin: 1rem;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
-/* SUBREDDIT TAG */
-.subreddit-tag {
-  background: var(--glass-bg);
-  padding: 2px 8px;
-  border-radius: 8px;
-  font-size: 0.9rem;
+/* Example utility classes for spacing */
+.mt-2 { margin-top: 0.5rem; }
+.mb-4 { margin-bottom: 1rem; }
+.p-4  { padding: 1rem; }
+
+/* =====================================================
+   Typography
+   ===================================================== */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0 0 0.75rem 0;
+  font-weight: 600;
+}
+p {
+  margin: 0 0 1rem 0;
+  line-height: 1.6;
+}
+
+/* =====================================================
+   Buttons & Links
+   ===================================================== */
+.button {
   display: inline-block;
-  margin-left: 10px;
-}
-
-/* SELF-TEXT PREVIEW */
-.selftext-preview {
-  margin: 10px 0;
-  font-size: 0.95rem;
-}
-
-/* IMAGE PREVIEWS */
-.image-preview-container {
-  display: flex;
-  flex-wrap: wrap;
-  margin: 10px 0;
-}
-.post-image-preview {
-  max-width: 100px;
-  max-height: 100px;
-  margin-right: 10px;
-  margin-bottom: 10px;
-  border-radius: 8px;
-  border: 1px solid var(--glass-border);
-}
-
-/* TEXTAREAS */
-.initial-thoughts-textarea,
-.comment-card textarea {
-  width: 100%;
-  background: var(--glass-bg);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--glass-border);
-  color: #fff;
-  padding: 10px;
-  border-radius: 8px;
-  margin: 10px 0;
-  box-sizing: border-box;
-  resize: vertical;
-}
-
-/* BUTTONS */
-button {
-  background: var(--glass-bg);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--glass-border);
-  border-radius: 8px;
-  padding: 8px 16px;
-  margin: 5px;
-  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  text-align: center;
   cursor: pointer;
-  transition: background 0.3s, transform 0.2s;
-  font-size: 0.95rem;
+  border-radius: 8px;
+  transition: background-color 0.3s ease, transform 0.2s ease;
 }
 
-/* Hover effect */
-button:hover {
-  background: rgba(255,255,255,0.2);
+.button--blue {
+  background-color: var(--accent-blue);
+  color: #111;
+  padding: 0.75rem 1.5rem;
+}
+.button--blue:hover {
+  background-color: var(--accent-peach);
   transform: translateY(-2px);
 }
 
-/* Action button colors */
-button.reject-button {
-  border-color: var(--reject-color);
+.button--outline {
+  background: none;
+  border: 2px solid var(--accent-coral);
+  color: var(--accent-coral);
+  padding: 0.5rem 1rem;
 }
-button.generate-button {
-  border-color: var(--generate-color);
-}
-button.post-direct-button {
-  border-color: var(--direct-color);
-}
-
-/* ACTIONS ROW */
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 10px;
+.button--outline:hover {
+  background-color: var(--accent-coral);
+  color: #fff;
 }
 
-/* LINKS INSIDE CARDS */
-.comment-card h3 a {
-  color: var(--accent-color);
-  text-decoration: none;
-}
-.comment-card h3 a:hover {
-  text-decoration: underline;
+/* =====================================================
+   Cards & Layout
+   ===================================================== */
+.card {
+  max-width: 400px;
+  margin: 1rem auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
+.container {
+  width: 90%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 0;
+}
+
+/* =====================================================
+   Utility: Dark Mode Toggle
+   ===================================================== */
+.toggle-dark {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1000;
+}
