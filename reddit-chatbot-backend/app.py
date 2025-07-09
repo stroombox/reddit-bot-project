@@ -5,15 +5,13 @@ import os
 import praw
 import time
 import sqlite3
+import json
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# ─── Setup ────────────────────────────────────────────────────────────────────
 load_dotenv()
-
 app = Flask(__name__)
 CORS(app)
-
-# --- Database Configuration ---
 DATABASE_FILE = 'bot_data.db'
 
 def get_db_connection():
@@ -23,15 +21,32 @@ def get_db_connection():
 
 def init_db():
     with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
+        c = conn.cursor()
+        # Already-posted table
+        c.execute('''
             CREATE TABLE IF NOT EXISTS posted_submissions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 submission_id TEXT UNIQUE NOT NULL,
-                timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+                timestamp REAL DEFAULT (strftime('%s','now'))
             )
         ''')
-        cursor.execute('''
+        # Suggestions table
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS suggestions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                submission_id TEXT UNIQUE NOT NULL,
+                title TEXT,
+                subreddit TEXT,
+                selftext TEXT,
+                post_url TEXT,
+                image_urls TEXT,
+                created_utc REAL,
+                suggested_comment TEXT DEFAULT '',
+                added_at REAL DEFAULT (strftime('%s','now'))
+            )
+        ''')
+        # Settings table (unchanged)
+        c.execute('''
             CREATE TABLE IF NOT EXISTS app_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 setting_name TEXT UNIQUE NOT NULL,
@@ -41,38 +56,19 @@ def init_db():
         conn.commit()
     print(f"Database initialized: {DATABASE_FILE}")
 
-def load_prompt_from_file(file_path="llm_prompt.txt"):
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
-    except FileNotFoundError:
-        print(f"FATAL ERROR: Prompt file '{file_path}' not found.")
-        return None
-    except Exception as e:
-        print(f"FATAL ERROR: Could not read prompt file: {e}")
-        return None
-
 with app.app_context():
     init_db()
 
-# --- Google Generative AI (LLM) Configuration ---
+# ─── Google LLM Setup ─────────────────────────────────────────────────────────
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
     llm_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 else:
-    print("FATAL ERROR: GOOGLE_API_KEY not found in environment variables.")
+    print("FATAL ERROR: GOOGLE_API_KEY not found.")
     llm_model = None
 
-# --- Load LLM Prompt from File ---
-BASE_LLM_PROMPT_TEXT = load_prompt_from_file()
-if not BASE_LLM_PROMPT_TEXT:
-    print("ERROR: llm_prompt.txt not found. Using a basic fallback prompt.")
-    BASE_LLM_PROMPT_TEXT = "Generate a short helpful comment for this Reddit post. Title: {post_title}. Body: {post_selftext}. User thought: {user_thought}"
-else:
-    print("Successfully loaded LLM prompt from llm_prompt.txt.")
-
-# --- Reddit API Credentials (for posting) via refresh token ---
+# ─── Reddit Poster Setup ──────────────────────────────────────────────────────
 REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
 REDDIT_REFRESH_TOKEN = os.getenv("REDDIT_REFRESH_TOKEN")
@@ -85,141 +81,216 @@ if all([REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_REFRESH_TOKEN, REDDIT_USE
         refresh_token = REDDIT_REFRESH_TOKEN,
         user_agent    = REDDIT_USER_AGENT
     )
-    print("PRAW instance for posting configured with refresh token")
+    print("PRAW poster configured with refresh token")
 else:
-    print("FATAL ERROR: Missing one or more Reddit posting credentials.")
+    print("FATAL ERROR: Missing Reddit posting credentials.")
     reddit_poster = None
 
+# ─── Helper: Extract submission ID from permalink ─────────────────────────────
+def extract_submission_id(permalink):
+    # permalink looks like "https://reddit.com/r/xxx/comments/ID/..."
+    parts = permalink.rstrip('/').split('/')
+    # ID is the 6th segment: ['', 'r', 'xxx', 'comments', 'ID', 'slug']
+    return parts[5] if len(parts) > 5 else None
 
-# --- In-memory storage for posts ---
-pending_suggestions = {}
-suggestion_id_counter = 1
-
+# ─── 1) List suggestions ──────────────────────────────────────────────────────
 @app.route('/suggestions', methods=['GET'])
 def get_suggestions():
-    return jsonify(list(pending_suggestions.values()))
+    now = time.time()
+    rows = []
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        # Fetch all suggestions that have NOT been posted yet
+        c.execute('''
+            SELECT s.* FROM suggestions s
+            LEFT JOIN posted_submissions p
+              ON s.submission_id = p.submission_id
+            WHERE p.submission_id IS NULL
+        ''')
+        rows = c.fetchall()
 
+    out = []
+    for row in rows:
+        age = now - row['added_at']
+        window = 3*24*60*60 if row['subreddit'].lower()=="smpchat" else 24*60*60
+        if age > window:
+            # drop expired suggestions from DB
+            with get_db_connection() as conn:
+                conn.execute(
+                    'DELETE FROM suggestions WHERE submission_id = ?',
+                    (row['submission_id'],)
+                )
+            continue
+
+        out.append({
+            "id":              row['submission_id'],
+            "redditPostTitle": row['title'],
+            "subreddit":       row['subreddit'],
+            "redditPostSelftext": row['selftext'],
+            "redditPostUrl":   row['post_url'],
+            "image_urls":      json.loads(row['image_urls']),
+            "suggestedComment": row['suggested_comment']
+        })
+
+    return jsonify(out)
+
+# ─── 2) Add a new suggestion (called by your scraper) ────────────────────────
 @app.route('/suggestions', methods=['POST'])
 def add_suggestion():
-    global suggestion_id_counter
-    data = request.json
-    if not data:
-        return jsonify({"error": "Invalid JSON"}), 400
-    
-    new_suggestion = {
-        "id": str(suggestion_id_counter),
-        "redditPostTitle": data.get("redditPostTitle", "No Title"),
-        "subreddit": data.get("subreddit", "Unknown"),
-        "redditPostSelftext": data.get("redditPostSelftext", ""),
-        "redditPostUrl": data.get("redditPostUrl", "#"),
-        "suggestedComment": "",
-        "image_urls": data.get("image_urls", []),
-        "redditPostPermalink": data.get("redditPostUrl", "#")
-    }
-    pending_suggestions[new_suggestion['id']] = new_suggestion
-    suggestion_id_counter += 1
-    print(f"Received new post: {new_suggestion['redditPostTitle']} (ID: {new_suggestion['id']})")
-    return jsonify({"message": "Raw post added", "id": new_suggestion['id']}), 201
+    data = request.json or {}
+    sub_id = extract_submission_id(data.get("redditPostUrl",""))
+    if not sub_id:
+        return jsonify({"error":"Invalid Reddit URL"}), 400
 
-@app.route('/suggestions/<suggestion_id>/generate', methods=['POST'])
-def generate_comment_for_post(suggestion_id):
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        # Insert if not exists
+        c.execute('''
+            INSERT OR IGNORE INTO suggestions
+            (submission_id, title, subreddit, selftext, post_url, image_urls, created_utc)
+            VALUES (?,?,?,?,?,?,?)
+        ''', (
+            sub_id,
+            data.get("redditPostTitle",""),
+            data.get("subreddit",""),
+            data.get("redditPostSelftext",""),
+            data.get("redditPostUrl",""),
+            json.dumps(data.get("image_urls",[])),
+            time.time()
+        ))
+        conn.commit()
+
+    print(f"Added suggestion {sub_id}")
+    return jsonify({"message":"Suggestion added","id":sub_id}), 201
+
+# ─── 3) Generate LLM comment ─────────────────────────────────────────────────
+@app.route('/suggestions/<submission_id>/generate', methods=['POST'])
+def generate_comment_for_post(submission_id):
     if not llm_model:
-        return jsonify({"error": "LLM not configured on server"}), 500
-    if suggestion_id not in pending_suggestions:
-        return jsonify({"error": "Post not found"}), 404
-    post = pending_suggestions[suggestion_id]
-    user_thought = request.json.get('user_thought', '')
+        return jsonify({"error":"LLM not configured"}), 500
+
+    data = request.json or {}
+    # Load existing suggestion
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        row = c.execute(
+            'SELECT * FROM suggestions WHERE submission_id = ?',
+            (submission_id,)
+        ).fetchone()
+    if not row:
+        return jsonify({"error":"Post not found"}), 404
+
+    # Build prompt
+    user_thought = data.get('user_thought','')
     final_prompt = BASE_LLM_PROMPT_TEXT.format(
-        post_title=post['redditPostTitle'],
-        post_selftext=post.get('redditPostSelftext', "[No body content]"),
-        post_url=post['redditPostUrl'],
-        image_urls=', '.join(post.get('image_urls', [])) or "[No image URLs]",
-        user_thought=user_thought
+        post_title   = row['title'],
+        post_selftext= row['selftext'] or "[No body content]",
+        image_urls   = ','.join(json.loads(row['image_urls'])) or "[No images]",
+        user_thought = user_thought
     )
+
     try:
         response = llm_model.generate_content(final_prompt)
-        if hasattr(response, 'text') and response.text.strip():
-            generated_comment = response.text.strip()
-            post['suggestedComment'] = generated_comment
-            print(f"Generated comment for post ID {suggestion_id}.")
-            return jsonify({"suggestedComment": generated_comment, "id": suggestion_id})
-        else:
-            print(f"ERROR: LLM generated empty text for post ID {suggestion_id}.")
-            return jsonify({"error": "Failed to generate comment", "details": "LLM output was empty"}), 500
-    except Exception as e:
-        print(f"ERROR: LLM generation failed for post ID {suggestion_id}: {e}")
-        return jsonify({"error": f"Could not generate comment: {e}"}), 500
+        comment = response.text.strip() if hasattr(response, 'text') else ''
+        if not comment:
+            raise ValueError("Empty LLM response")
 
-@app.route('/suggestions/<suggestion_id>/approve-and-post', methods=['POST'])
-def approve_and_post_comment(suggestion_id):
-    if not reddit_poster:
-        return jsonify({"error": "Reddit poster not configured on server"}), 500
-    if suggestion_id not in pending_suggestions:
-        return jsonify({"error": "Post not found"}), 404
-
-    request_data = request.get_json()
-    edited_comment_content = request_data.get('approved_comment')
-
-    if not edited_comment_content or not edited_comment_content.strip():
-        return jsonify({"error": "Cannot post an empty comment"}), 400
-
-    post_to_process = pending_suggestions.pop(suggestion_id)
-    
-    try:
-        submission_id_str = post_to_process['redditPostPermalink'].split('/')[-3]
-        submission = reddit_poster.submission(id=submission_id_str)
-        submission.reply(edited_comment_content)
-        
+        # Save generated comment
         with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO posted_submissions (submission_id) VALUES (?)", (submission_id_str,))
+            conn.execute(
+                'UPDATE suggestions SET suggested_comment = ? WHERE submission_id = ?',
+                (comment, submission_id)
+            )
             conn.commit()
-        
-        print(f"Successfully posted EDITED comment to Reddit post ID: {submission_id_str}")
-        print(f"Comment content: {edited_comment_content}")
-        return jsonify({"message": "Comment posted and suggestion processed"})
-    except Exception as e:
-        pending_suggestions[suggestion_id] = post_to_process
-        print(f"ERROR: Failed to post comment to Reddit for ID {suggestion_id}: {e}")
-        return jsonify({"error": f"Failed to post to Reddit: {e}"}), 500
 
-@app.route('/suggestions/<suggestion_id>/post-direct', methods=['POST'])
-def post_direct_comment(suggestion_id):
+        print(f"Generated comment for {submission_id}")
+        return jsonify({"suggestedComment":comment,"id":submission_id})
+    except Exception as e:
+        print(f"LLM error for {submission_id}: {e}")
+        return jsonify({"error":str(e)}), 500
+
+# ─── 4) Approve & post comment to Reddit ─────────────────────────────────────
+@app.route('/suggestions/<submission_id>/approve-and-post', methods=['POST'])
+def approve_and_post_comment(submission_id):
+    data = request.get_json() or {}
+    comment_text = data.get('approved_comment','').strip()
+    if not comment_text:
+        return jsonify({"error":"Cannot post empty comment"}), 400
     if not reddit_poster:
-        return jsonify({"error": "Reddit poster not configured on server"}), 500
-    if suggestion_id not in pending_suggestions:
-        return jsonify({"error": "Post not found"}), 404
-    data = request.json
-    direct_comment_content = data.get('direct_comment', '').strip()
-    if not direct_comment_content:
-        return jsonify({"error": "Direct comment content is empty"}), 400
-    post_to_process = pending_suggestions.pop(suggestion_id)
+        return jsonify({"error":"Reddit poster not configured"}), 500
+
+    # Post to Reddit
     try:
-        submission_id_str = post_to_process['redditPostPermalink'].split('/')[-3]
-        submission = reddit_poster.submission(id=submission_id_str)
-        submission.reply(direct_comment_content)
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO posted_submissions (submission_id) VALUES (?)", (submission_id_str,))
-            conn.commit()
-        print(f"Successfully posted DIRECT comment to Reddit post ID: {submission_id_str}")
-        return jsonify({"message": "Direct comment posted and suggestion processed"})
+        submission = reddit_poster.submission(id=submission_id)
+        submission.reply(comment_text)
     except Exception as e:
-        pending_suggestions[suggestion_id] = post_to_process
-        print(f"ERROR: Failed to post DIRECT comment to Reddit for ID {suggestion_id}: {e}")
-        return jsonify({"error": f"Failed to post directly to Reddit: {e}"}), 500
+        print(f"Reddit post error for {submission_id}: {e}")
+        return jsonify({"error":str(e)}), 500
 
-@app.route('/suggestions/<suggestion_id>', methods=['DELETE'])
-def handle_reject_action(suggestion_id):
-    if suggestion_id in pending_suggestions:
-        pending_suggestions.pop(suggestion_id)
-        print(f"Suggestion {suggestion_id} rejected and removed.")
-        return jsonify({"message": "Suggestion rejected"})
-    return jsonify({"error": "Suggestion not found"}), 404
+    # Mark as posted and remove from suggestions
+    now = time.time()
+    with get_db_connection() as conn:
+        conn.execute(
+            'INSERT OR IGNORE INTO posted_submissions(submission_id, timestamp) VALUES(?,?)',
+            (submission_id, now)
+        )
+        conn.execute(
+            'DELETE FROM suggestions WHERE submission_id = ?',
+            (submission_id,)
+        )
+        conn.commit()
 
+    print(f"Posted and removed suggestion {submission_id}")
+    return jsonify({"message":"Comment posted and suggestion removed"})
+
+# ─── 5) Reject without posting ───────────────────────────────────────────────
+@app.route('/suggestions/<submission_id>', methods=['DELETE'])
+def reject_suggestion(submission_id):
+    with get_db_connection() as conn:
+        conn.execute(
+            'DELETE FROM suggestions WHERE submission_id = ?',
+            (submission_id,)
+        )
+        conn.commit()
+    print(f"Rejected suggestion {submission_id}")
+    return jsonify({"message":"Suggestion rejected"})
+
+# ─── 6) Direct post without LLM ─────────────────────────────────────────────
+@app.route('/suggestions/<submission_id>/post-direct', methods=['POST'])
+def post_direct_comment(submission_id):
+    data = request.get_json() or {}
+    text = data.get('direct_comment','').strip()
+    if not text:
+        return jsonify({"error":"Empty direct comment"}), 400
+    if not reddit_poster:
+        return jsonify({"error":"Reddit poster not configured"}), 500
+
+    try:
+        submission = reddit_poster.submission(id=submission_id)
+        submission.reply(text)
+    except Exception as e:
+        print(f"Direct post error for {submission_id}: {e}")
+        return jsonify({"error":str(e)}), 500
+
+    # Mark as posted and remove suggestion
+    now = time.time()
+    with get_db_connection() as conn:
+        conn.execute(
+            'INSERT OR IGNORE INTO posted_submissions(submission_id, timestamp) VALUES(?,?)',
+            (submission_id, now)
+        )
+        conn.execute(
+            'DELETE FROM suggestions WHERE submission_id = ?',
+            (submission_id,)
+        )
+        conn.commit()
+
+    print(f"Direct-posted and removed suggestion {submission_id}")
+    return jsonify({"message":"Posted direct comment and removed suggestion"})
+
+# ─── Run ─────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    if not all([llm_model, reddit_poster]):
-        print("\n--- APPLICATION CANNOT START ---")
-        print("One or more critical API keys or credentials are missing from your .env file.")
+    if not llm_model or not reddit_poster:
+        print("\n--- CANNOT START: missing keys/creds ---")
     else:
         app.run(debug=True)
