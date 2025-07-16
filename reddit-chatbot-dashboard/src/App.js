@@ -64,7 +64,7 @@ function App() {
     let opts = {};
 
     if (actionType === 'approve') {
-      if (!post.suggestedComment.trim()) { alert('Please generate a comment first.'); return; }
+      if (!post.suggestedComment?.trim()) { alert('Please generate a comment first.'); return; }
       url = `${API_URL}/suggestions/${id}/approve-and-post`;
       opts = {
         method: 'POST',
@@ -140,18 +140,29 @@ function App() {
                 >
                   {c.redditPostTitle}
                 </a>
-                <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>
-                  {new Date(parseFloat(c.created_utc) * 1000).toLocaleString(undefined, {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                  })}
-                </div>
+                {/* only show date if available */}
+                {c.created_utc && (
+                  <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>
+                    {new Date(parseFloat(c.created_utc) * 1000).toLocaleString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true
+                    })}
+                  </div>
+                )}
               </div>
 
+              {/* show post selftext */}
+              {c.redditPostSelftext && (
+                <p style={{ marginBottom: '0.75rem', fontSize: '0.875rem', opacity: 0.9 }}>
+                  {c.redditPostSelftext}
+                </p>
+              )}
+
+              {/* image thumbnails */}
               {c.image_urls?.length > 0 && (
                 <div className="image-preview-container" style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   {c.image_urls.map((url, i) => (
@@ -161,9 +172,9 @@ function App() {
                       alt="post"
                       onClick={() => openLightbox(url)}
                       style={{
-                        width: '300px',
-                        maxWidth: '100%',
+                        width: '75px',
                         height: 'auto',
+                        objectFit: 'cover',
                         cursor: 'pointer',
                         borderRadius: '0.25rem'
                       }}
