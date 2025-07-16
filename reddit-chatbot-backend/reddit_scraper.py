@@ -25,6 +25,12 @@ if missing:
     print(f"❌ Missing required environment variables: {', '.join(missing)} – exiting.")
     exit(1)
 
+# Determine the correct suggestions endpoint
+if FLASK_BACKEND_URL.endswith('/suggestions'):
+    SUGGESTIONS_URL = FLASK_BACKEND_URL
+else:
+    SUGGESTIONS_URL = f"{FLASK_BACKEND_URL}/suggestions"
+
 # Initialize Reddit client
 reddit = praw.Reddit(
     client_id     = REDDIT_CLIENT_ID,
@@ -53,25 +59,18 @@ def get_new_smp_posts(subreddit_name: str, limit: int = 25) -> list:
     new_posts = []
 
     for sub in reddit.subreddit(subreddit_name).new(limit=limit):
-        # Skip old posts
         if sub.created_utc < cutoff:
             continue
-
-        # Skip if bot already commented
         sub.comments.replace_more(limit=0)
         if any(
             comment.author and comment.author.name.lower() == BOT_USERNAME
             for comment in sub.comments.list()
         ):
             continue
-
-        # Keyword filter for non-SMPchat
         title_text = sub.title.lower()
         body_text = sub.selftext.lower()
         if subreddit_name.lower() != "smpchat" and not any(k in title_text or k in body_text for k in KEYWORDS):
             continue
-
-        # Gather images
         images = []
         if hasattr(sub, "gallery_data") and sub.gallery_data:
             for item in sub.gallery_data["items"]:
@@ -82,7 +81,6 @@ def get_new_smp_posts(subreddit_name: str, limit: int = 25) -> list:
                     images.append(url)
         elif not sub.is_self and sub.url.lower().endswith((".jpg", ".jpeg", ".png", ".gif")):
             images.append(sub.url)
-
         new_posts.append({
             "submission_id":     sub.id,
             "redditPostTitle":    sub.title,
@@ -91,7 +89,6 @@ def get_new_smp_posts(subreddit_name: str, limit: int = 25) -> list:
             "redditPostUrl":      f"https://reddit.com{sub.permalink}",
             "image_urls":         images
         })
-
     return new_posts
 
 
@@ -117,7 +114,7 @@ if __name__ == "__main__":
         }
         try:
             resp = requests.post(
-                f"{FLASK_BACKEND_URL}/suggestions",
+                SUGGESTIONS_URL,
                 json=payload,
                 timeout=10
             )
