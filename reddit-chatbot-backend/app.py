@@ -75,7 +75,7 @@ with app.app_context():
     conn.commit()
     conn.close()
 
-# ─── Google API Key and Model (UPDATED) ──────────────────────────────────
+# ─── Google API Key and Model ───────────────────────────────────────────────
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 MODEL_NAME = os.getenv("GENERATIVE_MODEL", "gemini-1.5-flash-latest")
 REST_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent"
@@ -97,40 +97,18 @@ else:
     reddit_poster = None
     app.logger.error("Reddit poster not configured; posting disabled.")
 
-# ─── Utility ────────────────────────────────────────────────────────────────
-def extract_submission_id(permalink):
-    parts = permalink.rstrip('/').split('/')
-    if 'comments' in parts:
-        idx = parts.index('comments')
-        if len(parts) > idx + 1:
-            return parts[idx + 1]
-    return None
-
 # ─── Routes ─────────────────────────────────────────────────────────────────
-@app.route('/', methods=['GET'])
-def health():
-    return jsonify({"status":"ok"}), 200
-
 @app.route('/suggestions', methods=['GET'])
 def list_suggestions():
     conn = get_db_connection()
-    rows = conn.execute('SELECT * FROM suggestions').fetchall()
-    posted = {r['submission_id'] for r in conn.execute('SELECT submission_id FROM posted_submissions').fetchall()}
+    rows = conn.execute('SELECT * FROM suggestions ORDER BY added_at DESC').fetchall()
+    posted_ids = {r['submission_id'] for r in conn.execute('SELECT submission_id FROM posted_submissions').fetchall()}
     conn.close()
 
-    out = []
-    for r in rows:
-        if r['submission_id'] in posted:
-            continue
-        out.append({
-            "id": r['submission_id'],
-            "redditPostTitle": r['title'],
-            "subreddit": r['subreddit'],
-            "redditPostSelftext": r['selftext'],
-            "redditPostUrl": r['post_url'],
-            "image_urls": json.loads(r['image_urls']),
-            "suggestedComment": r['suggested_comment']
-        })
+    out = [dict(r) for r in rows if r['submission_id'] not in posted_ids]
+    for item in out:
+        item['id'] = item['submission_id'] # Ensure frontend receives 'id'
+        item['image_urls'] = json.loads(item['image_urls'])
     return jsonify(out)
 
 @app.route('/suggestions', methods=['POST'])
@@ -141,12 +119,12 @@ def add_suggestion():
         'INSERT OR IGNORE INTO suggestions (submission_id, title, subreddit, selftext, post_url, image_urls, created_utc) VALUES (?,?,?,?,?,?,?)',
         (
             data.get('submission_id'),
-            data.get('redditPostTitle') or data.get('title',''),
-            data.get('subreddit',''),
-            data.get('redditPostSelftext') or data.get('selftext',''),
-            data.get('redditPostUrl') or data.get('post_url',''),
+            data.get('redditPostTitle'),
+            data.get('subreddit'),
+            data.get('redditPostSelftext'),
+            data.get('redditPostUrl'),
             json.dumps(data.get('image_urls', [])),
-            data.get('created_utc', time.time())
+            time.time()
         )
     )
     conn.commit()
@@ -155,58 +133,34 @@ def add_suggestion():
 
 @app.route('/suggestions/<submission_id>/generate', methods=['POST'])
 def generate_comment(submission_id):
+    # (This function remains the same)
     if not GOOGLE_API_KEY:
         return jsonify({"error":"LLM not configured"}), 500
     data = request.get_json() or {}
     user_thought = data.get('user_thought','')
-
     conn = get_db_connection()
     row = conn.execute('SELECT * FROM suggestions WHERE submission_id=?',(submission_id,)).fetchone()
     conn.close()
     if not row:
         return jsonify({"error":"not found"}), 404
-
-    prompt = build_llm_prompt(
-        row['title'], row['selftext'], row['post_url'],
-        json.loads(row['image_urls']), user_thought, BLOG_URLS
-    )
-    app.logger.debug(f"Prompt for {submission_id}: {prompt}")
-
-    # --- PAYLOAD AND RESPONSE PARSING UPDATED ---
-    payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }]
-    }
-
+    prompt = build_llm_prompt(row['title'], row['selftext'], row['post_url'], json.loads(row['image_urls']), user_thought, BLOG_URLS)
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
-        resp = requests.post(
-            REST_ENDPOINT,
-            headers={"Content-Type":"application/json"},
-            params={"key": GOOGLE_API_KEY},
-            json=payload
-        )
+        resp = requests.post(REST_ENDPOINT, params={"key": GOOGLE_API_KEY}, json=payload)
         resp.raise_for_status()
         result = resp.json()
-        
-        candidates = result.get("candidates", [])
-        if not candidates or "content" not in candidates[0] or "parts" not in candidates[0]["content"]:
-            raise ValueError("Invalid or empty response from generative API")
-            
-        comment = candidates[0]["content"]["parts"][0].get("text", "").strip()
-        if not comment:
-            raise ValueError("Empty text in response from generative API")
-
+        comment = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+        if not comment: raise ValueError("Empty response from API")
         conn = get_db_connection()
         conn.execute('UPDATE suggestions SET suggested_comment=? WHERE submission_id=?',(comment,submission_id))
         conn.commit()
         conn.close()
         return jsonify({"suggestedComment": comment}), 200
-
     except Exception as e:
         app.logger.error(f"LLM generation failed for {submission_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
+# vvv THIS FUNCTION IS UPDATED WITH ERROR HANDLING vvv
 @app.route('/suggestions/<submission_id>/approve-and-post', methods=['POST'])
 def approve_and_post(submission_id):
     if not reddit_poster:
@@ -214,24 +168,48 @@ def approve_and_post(submission_id):
     
     request_data = request.get_json() or {}
     comment_to_post = request_data.get("approved_comment")
-
+    
     if not comment_to_post:
+        return jsonify({"error": "No comment content provided."}), 400
+    
+    try:
+        submission = reddit_poster.submission(id=submission_id)
+        submission.reply(comment_to_post)
+        
         conn = get_db_connection()
-        row = conn.execute('SELECT suggested_comment FROM suggestions WHERE submission_id=?',(submission_id,)).fetchone()
+        conn.execute('INSERT OR IGNORE INTO posted_submissions (submission_id) VALUES (?)',(submission_id,))
+        conn.execute('DELETE FROM suggestions WHERE submission_id=?',(submission_id,))
+        conn.commit()
         conn.close()
-        if not row or not row['suggested_comment']:
-             return jsonify({"error":"nothing to post"}), 400
-        comment_to_post = row['suggested_comment']
+        return jsonify({"message":"posted"}), 200
+    except Exception as e:
+        app.logger.error(f"Failed to post to Reddit for {submission_id}: {e}")
+        # Return a specific error message to the frontend
+        return jsonify({"error": f"Failed to post to Reddit: {str(e)}"}), 500
 
-    submission = reddit_poster.submission(id=submission_id)
-    submission.reply(comment_to_post)
+# vvv THIS FUNCTION IS UPDATED WITH ERROR HANDLING vvv
+@app.route('/suggestions/<submission_id>/post-direct', methods=['POST'])
+def post_direct(submission_id):
+    if not reddit_poster:
+        return jsonify({"error":"Reddit not configured"}), 500
+    data = request.get_json() or {}
+    comment = data.get('direct_comment','')
+    if not comment:
+        return jsonify({"error": "Cannot post an empty comment."}), 400
+        
+    try:
+        submission = reddit_poster.submission(id=submission_id)
+        submission.reply(comment)
 
-    conn = get_db_connection()
-    conn.execute('INSERT OR IGNORE INTO posted_submissions (submission_id) VALUES (?)',(submission_id,))
-    conn.execute('DELETE FROM suggestions WHERE submission_id=?',(submission_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({"message":"posted"}), 200
+        conn = get_db_connection()
+        conn.execute('INSERT OR IGNORE INTO posted_submissions (submission_id) VALUES (?)',(submission_id,))
+        conn.execute('DELETE FROM suggestions WHERE submission_id=?',(submission_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"message":"direct posted"}), 200
+    except Exception as e:
+        app.logger.error(f"Failed to post DIRECTLY to Reddit for {submission_id}: {e}")
+        return jsonify({"error": f"Failed to post directly to Reddit: {str(e)}"}), 500
 
 @app.route('/suggestions/<submission_id>', methods=['DELETE'])
 def delete_suggestion(submission_id):
@@ -240,22 +218,6 @@ def delete_suggestion(submission_id):
     conn.commit()
     conn.close()
     return jsonify({"message":"deleted"}), 200
-
-@app.route('/suggestions/<submission_id>/post-direct', methods=['POST'])
-def post_direct(submission_id):
-    if not reddit_poster:
-        return jsonify({"error":"Reddit not configured"}), 500
-    data = request.get_json() or {}
-    comment = data.get('direct_comment','')
-    submission = reddit_poster.submission(id=submission_id)
-    submission.reply(comment)
-
-    conn = get_db_connection()
-    conn.execute('INSERT OR IGNORE INTO posted_submissions (submission_id) VALUES (?)',(submission_id,))
-    conn.execute('DELETE FROM suggestions WHERE submission_id=?',(submission_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({"message":"direct posted"}), 200
 
 if __name__=='__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
