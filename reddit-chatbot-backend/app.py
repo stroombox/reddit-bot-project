@@ -28,11 +28,14 @@ def fetch_sitemap_urls():
     urls = []
     ns = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
     for sitemap in SITEMAP_URLS:
-        resp = requests.get(sitemap, timeout=10)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
-        for loc in root.findall('.//ns:loc', ns):
-            urls.append(loc.text)
+        try:
+            resp = requests.get(sitemap, timeout=10)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.content)
+            for loc in root.findall('.//ns:loc', ns):
+                urls.append(loc.text)
+        except requests.RequestException as e:
+            app.logger.error(f"Failed to fetch sitemap {sitemap}: {e}")
     return urls
 
 BLOG_URLS = fetch_sitemap_urls()
@@ -72,12 +75,10 @@ with app.app_context():
     conn.commit()
     conn.close()
 
-# ─── Google API Key and Model ───────────────────────────────────────────────
+# ─── Google API Key and Model (UPDATED) ──────────────────────────────────
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-# Default to text-bison; can override with GENERATIVE_MODEL env var
-MODEL_NAME = os.getenv("GENERATIVE_MODEL", "text-bison-001")
-RESOURCE = MODEL_NAME if MODEL_NAME.startswith("models/") else f"models/{MODEL_NAME}"
-REST_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta2/{RESOURCE}:generateText"
+MODEL_NAME = os.getenv("GENERATIVE_MODEL", "gemini-1.5-flash-latest")
+REST_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent"
 
 # ─── Reddit Poster Setup ────────────────────────────────────────────────────
 REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
@@ -171,19 +172,30 @@ def generate_comment(submission_id):
     )
     app.logger.debug(f"Prompt for {submission_id}: {prompt}")
 
+    # --- PAYLOAD AND RESPONSE PARSING UPDATED ---
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+
     try:
         resp = requests.post(
             REST_ENDPOINT,
             headers={"Content-Type":"application/json"},
             params={"key": GOOGLE_API_KEY},
-            json={"prompt": {"text": prompt}, "temperature": 0.7}
+            json=payload
         )
         resp.raise_for_status()
         result = resp.json()
-        candidates = result.get("candidates") or []
-        comment = candidates[0].get("output","").strip() if candidates else ''
+        
+        candidates = result.get("candidates", [])
+        if not candidates or "content" not in candidates[0] or "parts" not in candidates[0]["content"]:
+            raise ValueError("Invalid or empty response from generative API")
+            
+        comment = candidates[0]["content"]["parts"][0].get("text", "").strip()
         if not comment:
-            raise ValueError("empty response from generative API")
+            raise ValueError("Empty text in response from generative API")
 
         conn = get_db_connection()
         conn.execute('UPDATE suggestions SET suggested_comment=? WHERE submission_id=?',(comment,submission_id))
@@ -199,14 +211,20 @@ def generate_comment(submission_id):
 def approve_and_post(submission_id):
     if not reddit_poster:
         return jsonify({"error":"Reddit not configured"}), 500
-    conn = get_db_connection()
-    row = conn.execute('SELECT suggested_comment FROM suggestions WHERE submission_id=?',(submission_id,)).fetchone()
-    conn.close()
-    if not row or not row['suggested_comment']:
-        return jsonify({"error":"nothing to post"}), 400
+    
+    request_data = request.get_json() or {}
+    comment_to_post = request_data.get("approved_comment")
+
+    if not comment_to_post:
+        conn = get_db_connection()
+        row = conn.execute('SELECT suggested_comment FROM suggestions WHERE submission_id=?',(submission_id,)).fetchone()
+        conn.close()
+        if not row or not row['suggested_comment']:
+             return jsonify({"error":"nothing to post"}), 400
+        comment_to_post = row['suggested_comment']
 
     submission = reddit_poster.submission(id=submission_id)
-    submission.reply(row['suggested_comment'])
+    submission.reply(comment_to_post)
 
     conn = get_db_connection()
     conn.execute('INSERT OR IGNORE INTO posted_submissions (submission_id) VALUES (?)',(submission_id,))
@@ -240,4 +258,4 @@ def post_direct(submission_id):
     return jsonify({"message":"direct posted"}), 200
 
 if __name__=='__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
