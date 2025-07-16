@@ -107,7 +107,6 @@ def health():
 def list_suggestions():
     conn = get_db_connection()
     rows = conn.execute('SELECT * FROM suggestions').fetchall()
-    # Filter out posted
     posted = {r['submission_id'] for r in conn.execute('SELECT submission_id FROM posted_submissions')}
     conn.close()
 
@@ -166,8 +165,13 @@ def generate_comment(submission_id):
     app.logger.debug(f"Prompt for {submission_id}: {prompt}")
 
     try:
-        response = genai.generate_text(model='gemini-1.5-flash-latest', prompt=prompt)
-        comment = response.text.strip()
+        chat_resp = genai.chat.completions.create(
+            model='gemini-1.5-flash-latest',
+            messages=[{"author":"user","content":prompt}]
+        )
+        candidate = chat_resp.candidates[0]
+        comment = candidate.message.content.strip() if hasattr(candidate, 'message') else candidate.content.strip()
+
         if not comment:
             raise ValueError("empty response from LLM")
 
@@ -185,7 +189,6 @@ def generate_comment(submission_id):
 def approve_and_post(submission_id):
     if not reddit_poster:
         return jsonify({"error":"Reddit not configured"}), 500
-    data = request.get_json() or {}
     conn = get_db_connection()
     row = conn.execute('SELECT suggested_comment FROM suggestions WHERE submission_id=?',(submission_id,)).fetchone()
     conn.close()
