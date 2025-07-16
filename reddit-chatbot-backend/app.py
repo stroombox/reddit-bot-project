@@ -77,8 +77,8 @@ with app.app_context():
 
 # ─── Google API Key and Model ───────────────────────────────────────────────
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-# Default to text-bison; can override with GENERATIVE_MODEL env var
-MODEL_NAME = os.getenv("GENERATIVE_MODEL", "models/text-bison-001")
+# Default to text-bison; do NOT include the "models/" prefix here
+MODEL_NAME    = os.getenv("GENERATIVE_MODEL", "text-bison-001")
 REST_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta2/models/{MODEL_NAME}:generateText"
 
 # ─── Reddit Poster Setup ────────────────────────────────────────────────────
@@ -130,7 +130,8 @@ def add_suggestion():
     data = request.get_json() or {}
     conn = get_db_connection()
     conn.execute(
-        'INSERT OR IGNORE INTO suggestions (submission_id, title, subreddit, selftext, post_url, image_urls, created_utc) VALUES (?,?,?,?,?,?,?)',
+        'INSERT OR IGNORE INTO suggestions (submission_id, title, subreddit, selftext, post_url, image_urls, created_utc) '
+        'VALUES (?,?,?,?,?,?,?)',
         (
             data.get('submission_id'),
             data.get('redditPostTitle') or data.get('title',''),
@@ -174,9 +175,9 @@ def generate_comment(submission_id):
             json={"prompt": {"text": prompt}, "temperature": 0.7}
         )
         resp.raise_for_status()
-        result = resp.json()
+        result     = resp.json()
         candidates = result.get("candidates") or []
-        comment = candidates[0].get("output","").strip() if candidates else ''
+        comment    = candidates[0].get("output","").strip() if candidates else ''
         if not comment:
             raise ValueError("empty response from generative API")
 
