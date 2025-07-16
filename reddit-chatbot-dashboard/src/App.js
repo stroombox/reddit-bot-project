@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import './App.css'; 
+import './App.css';
 
 function App() {
   const [pendingComments, setPendingComments] = useState([]);
@@ -19,7 +19,7 @@ function App() {
         const bIsPriority = b.subreddit?.toLowerCase() === 'smpchat';
         if (aIsPriority && !bIsPriority) return -1;
         if (!aIsPriority && bIsPriority) return 1;
-        return parseInt(a.id) - parseInt(b.id);
+        return a.id.localeCompare(b.id);
       });
 
       setPendingComments(data);
@@ -31,7 +31,9 @@ function App() {
     }
   }, [API_URL]);
 
-  useEffect(() => { fetchSuggestions(); }, [fetchSuggestions]);
+  useEffect(() => {
+    fetchSuggestions();
+  }, [fetchSuggestions]);
 
   const openLightbox = url => setLightboxImage(url);
   const closeLightbox = () => setLightboxImage(null);
@@ -45,8 +47,8 @@ function App() {
     setPendingComments(prev => prev.map(p => p.id === id ? { ...p, suggestedComment: 'Generating...' } : p));
     try {
       const res = await fetch(`${API_URL}/suggestions/${id}/generate`, {
-        method: 'POST', 
-        headers: {'Content-Type': 'application/json'},
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_thought: thoughts })
       });
       if (!res.ok) throw new Error();
@@ -100,18 +102,9 @@ function App() {
   };
 
   return (
-    <div
-      className="App"
-      style={{
-        background: 'linear-gradient(to bottom, #000000, #333333)',
-        minHeight: '100vh',
-        padding: '1rem'
-      }}
-    >
+    <div className="App" style={{ background: 'linear-gradient(to bottom, #000000, #333333)', minHeight: '100vh', padding: '1rem' }}>
       <header className="App-header">
-        <h1 style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>
-          Reddit Comment Review
-        </h1>
+        <h1 style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>Reddit Comment Review</h1>
       </header>
 
       <div className="comment-list container">
@@ -119,117 +112,42 @@ function App() {
           <p>No pending posts to review.</p>
         ) : (
           pendingComments.map(c => (
-            <div
-              key={c.id}
-              className="card mb-4"
-              style={{
-                background: 'linear-gradient(to bottom right, #1e3a8a, #3b82f6)',
-                padding: '1rem',
-                borderRadius: '0.5rem',
-                color: '#fff',
-                overflow: 'hidden'
-              }}
-            >
-              <div className="card-header" style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <a
-                  href={c.redditPostUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="post-title"
-                  style={{ color: '#fff', fontWeight: 'bold', fontSize: '1rem' }}
-                >
+            <div key={c.id} className="comment-card">
+              <div className="card-header">
+                <a href={c.redditPostUrl} target="_blank" rel="noopener noreferrer" className="post-title">
                   {c.redditPostTitle}
                 </a>
-                <span style={{ fontSize: '0.875rem', opacity: 0.8 }}>
-                  r/{c.subreddit}
-                </span>
+                <span className="subreddit-tag">r/{c.subreddit}</span>
               </div>
 
-              {c.redditPostSelftext && (
-                <p style={{ marginBottom: '0.75rem', fontSize: '0.875rem', opacity: 0.9 }}>
-                  {c.redditPostSelftext}
-                </p>
-              )}
+              {c.redditPostSelftext && <p className="selftext-preview">{c.redditPostSelftext}</p>}
 
-              {c.image_urls?.length > 0 && (
-                <div className="image-preview-container" style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {c.image_urls && c.image_urls.length > 0 && (
+                <div className="image-preview-container">
                   {c.image_urls.map((url, i) => (
-                    <img
-                      key={i}
-                      src={url}
-                      alt="post"
-                      onClick={() => openLightbox(url)}
-                      style={{
-                        width: '75px',
-                        height: 'auto',
-                        objectFit: 'cover',
-                        cursor: 'pointer',
-                        borderRadius: '0.25rem'
-                      }}
-                    />
+                    <img key={i} src={url} alt="post" onClick={() => openLightbox(url)} className="post-image-preview" />
                   ))}
                 </div>
               )}
 
-              <div style={{ marginBottom: '0.75rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.25rem' }}>
-                  Your Initial Thoughts:
-                </label>
-                <textarea
-                  className="initial-thoughts-textarea"
-                  placeholder="Type your brief response..."
-                  rows={2}
-                  value={initialThoughts[c.id] || ''}
-                  onChange={e => handleInitialThoughtsChange(c.id, e.target.value)}
-                  style={{ width: '100%', borderRadius: '0.25rem', padding: '0.5rem' }}
-                />
+              <div>
+                <label className="textarea-label">Your Initial Thoughts:</label>
+                <textarea className="initial-thoughts-textarea" placeholder="Type your brief response." rows={2} value={initialThoughts[c.id] || ''} onChange={e => handleInitialThoughtsChange(c.id, e.target.value)} />
               </div>
 
               {c.suggestedComment ? (
                 <>
-                  <label style={{ display: 'block', marginBottom: '0.25rem' }}>
-                    Suggested Comment:
-                  </label>
-                  <textarea
-                   	className="suggested-textarea"
-                    rows={4}
-                    value={c.suggestedComment}
-                    onChange={e => setPendingComments(prev =>
-                      prev.map(p =>
-                        p.id === c.id ? { ...p, suggestedComment: e.target.value } : p
-                      )
-                    )}
-                    style={{ width: '100%', borderRadius: '0.25rem', padding: '0.5rem', marginBottom: '0.75rem' }}
-                  />
-                  <div className="actions" style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button
-                      className="button button--blue"
-                      onClick={() => handleAction(c.id, 'approve')}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      className="button button--outline"
-                      onClick={() => handleAction(c.id, 'reject')}
-                    >
-                      Reject
-                    </button>
+                  <label>Suggested Comment:</label>
+                  <textarea className="suggested-textarea" rows={4} value={c.suggestedComment} onChange={e => setPendingComments(prev => prev.map(p => p.id === c.id ? { ...p, suggestedComment: e.target.value } : p))} />
+                  <div className="actions">
+                    <button className="generate-button" onClick={() => handleAction(c.id, 'approve')}>Approve</button>
+                    <button className="post-direct-button" onClick={() => handleAction(c.id, 'reject')}>Reject</button>
                   </div>
                 </>
               ) : (
-                <div className="actions" style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    className="button button--blue"
-                    onClick={() => handleGenerate(c.id)}
-                  >
-                    Generate
-                  </button>
-                  <button
-                    className="button button--outline"
-                    onClick={() => handleAction(c.id, 'postDirect')}
-                  >
-                    Post Direct
-                  </button>
+                <div className="actions">
+                  <button className="generate-button" onClick={() => handleGenerate(c.id)}>Generate</button>
+                  <button className="post-direct-button" onClick={() => handleAction(c.id, 'postDirect')}>Post Direct</button>
                 </div>
               )}
             </div>
@@ -238,28 +156,8 @@ function App() {
       </div>
 
       {lightboxImage && (
-        <div
-          className="lightbox-overlay"
-          onClick={closeLightbox}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.8)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
-          }}
-        >
-          <img
-            src={lightboxImage}
-            alt="full"
-            className="lightbox-image"
-            style={{ maxHeight: '90%', maxWidth: '90%', borderRadius: '0.5rem' }}
-          />
+        <div className="lightbox-overlay" onClick={closeLightbox}>
+          <img src={lightboxImage} alt="full" className="lightbox-image" />
         </div>
       )}
     </div>
