@@ -102,7 +102,15 @@ function App() {
   };
 
   return (
-    <div className="App" style={{ background: 'linear-gradient(to bottom, #000000, #333333)', minHeight: '100vh', padding: '1rem' }}>
+    <div
+      className="App"
+      style={{
+        background: 'linear-gradient(to bottom, #000000, #333333)',
+        color: '#ffffff',
+        minHeight: '100vh',
+        padding: '1rem'
+      }}
+    >
       <header className="App-header">
         <h1 style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>Reddit Comment Review</h1>
       </header>
@@ -132,13 +140,24 @@ function App() {
 
               <div>
                 <label className="textarea-label">Your Initial Thoughts:</label>
-                <textarea className="initial-thoughts-textarea" placeholder="Type your brief response." rows={2} value={initialThoughts[c.id] || ''} onChange={e => handleInitialThoughtsChange(c.id, e.target.value)} />
+                <textarea
+                  className="initial-thoughts-textarea"
+                  placeholder="Type your brief response."
+                  rows={2}
+                  value={initialThoughts[c.id] || ''}
+                  onChange={e => handleInitialThoughtsChange(c.id, e.target.value)}
+                />
               </div>
 
               {c.suggestedComment ? (
                 <>
                   <label>Suggested Comment:</label>
-                  <textarea className="suggested-textarea" rows={4} value={c.suggestedComment} onChange={e => setPendingComments(prev => prev.map(p => p.id === c.id ? { ...p, suggestedComment: e.target.value } : p))} />
+                  <textarea
+                    className="suggested-textarea"
+                    rows={4}
+                    value={c.suggestedComment}
+                    onChange={e => setPendingComments(prev => prev.map(p => p.id === c.id ? { ...p, suggestedComment: e.target.value } : p))}
+                  />
                   <div className="actions">
                     <button className="generate-button" onClick={() => handleAction(c.id, 'approve')}>Approve</button>
                     <button className="post-direct-button" onClick={() => handleAction(c.id, 'reject')}>Reject</button>
