@@ -1,70 +1,77 @@
-# llm_prompt.py
+import requests
+import xml.etree.ElementTree as ET
+from functools import lru_cache
 
-"""
-Builds the prompt for the Google LLM, embedding the list of static blog links
-or—later—dynamic sitemap links.
-"""
+# URLs of our sitemaps
+SITEMAP_URLS = [
+    "https://scalpsusa.com/post-sitemap.xml",
+    "https://scalpsusa.com/page-sitemap.xml"
+]
+# UTM parameters to append to links
+UTM_PARAMS = "?utm_source=Reddit&utm_campaign=Reddit_Response_bot"
 
-from typing import List
-
-# Your core instructions (trimmed down for clarity; paste in your full LLM_PROMPT here)
-LLM_PROMPT = """
-You are a highly skilled professional SMP artist and your goal is to answer questions concerns people might have about hair loss or questions about their SMP or getting SMP
-
-Role & Voice:
-Speak like a seasoned SMP artist who tells it straight.
-Keep it clear, everyday language—no cryptic slang.
-
-Length & Structure:
-Aim for 2–3 sentences total.
-Exactly one sentence may carry a dry, mature quip—clever, not corny.
-The rest should answer plainly and address common worries (pain, cost, visibility).
-
-Humor:
-Start with one dry, natural-sounding hook.
-Humor should be subtle and sharp, not goofy or forced.
-
-Content Priorities:
-Provide an accurate answer or ask for clarification if unsure.
-Address common concerns (pain, cost, “will people notice?”).
-Include a single dry quip for flavor.
-
-Links:
-Include exactly one relevant blog link only if it deepens the answer.
-Source from the preloaded sitemap URLs (injected by app.py).
-
-Format for Reddit rich text style:
-More detail Here: Title
-
-Reddit Post Title: {post_title}
-Reddit Post Body (Selftext): {post_selftext}
-Reddit Post URL: {post_url}
-Image URLs (if any): {image_urls}
-
-Your Initial Thoughts/Draft: {user_thought}
-
-**Your Refined Reddit Comment Suggestion (Strictly follow the rules for "Initial Thoughts" if they are provided, otherwise generate a new helpful comment):**
-"""
-
-def build_llm_prompt(
-    post_title: str,
-    post_selftext: str,
-    post_url: str,
-    image_urls: List[str],
-    user_thought: str,
-    blog_links: List[str] = None
-) -> str:
+@lru_cache(maxsize=1)
+def fetch_all_blog_links():
     """
-    Insert all parameters into the LLM prompt.
-    `blog_links` will be interpolated by app.py if you choose to add dynamic sitemap loading.
+    Fetches and parses each sitemap, returning a flat list of all article URLs.
     """
-    # if you want to list them in the prompt, you could do:
-    # link_section = "\n".join(f"- {url}" for url in (blog_links or []))
-    # For now we ignore blog_links or handle it later.
-    return LLM_PROMPT.format(
-        post_title=post_title,
-        post_selftext=post_selftext,
-        post_url=post_url,
-        image_urls=", ".join(image_urls) if image_urls else "[No images]",
-        user_thought=user_thought
+    links = []
+    for sitemap_url in SITEMAP_URLS:
+        try:
+            resp = requests.get(sitemap_url, timeout=10)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.content)
+            # Sitemap XML uses <url><loc>URL</loc></url>
+            for url_elem in root.findall('.//{http://www.sitemaps.org/schemas/sitemap/0.9}loc'):
+                loc = url_elem.text.strip()
+                if loc:
+                    links.append(loc + UTM_PARAMS)
+        except Exception as e:
+            print(f"Warning: failed to fetch/parse {sitemap_url}: {e}")
+    return links
+
+
+def choose_relevant_link(post_title, post_body):
+    """
+    Chooses the most relevant blog link based on keywords in the post title or body.
+    Falls back to the general SMP guide if no match.
+    """
+    text = (post_title + " " + post_body).lower()
+    for link in fetch_all_blog_links():
+        # Simplest heuristic: look for any segment of the URL path in the post text
+        slug = link.split('/')[-1].split('?')[0].replace('-', ' ')
+        if any(word in text for word in slug.split() if len(word) > 3):
+            return link
+    # Default fallback
+    return "https://scalpsusa.com/scalp-micropigmentation-guide/" + UTM_PARAMS
+
+# The template prompt for the LLM
+LLM_PROMPT_TEMPLATE = """
+You are a highly skilled professional SMP artist answering questions about hair loss and SMP.
+
+Title: {title}
+Body: {body}
+Post URL: {url}
+Images: {images}
+
+Your initial thoughts (from user, if any): {user_thought}
+
+Provide a clear, concise answer (2–3 sentences, one dry quip) and include one relevant link for more detail:
+More detail here: {link}
+"""
+
+
+def build_llm_prompt(post_title, post_selftext, post_url, image_urls, user_thought):
+    """
+    Constructs the final prompt for the Google LLM, selecting a relevant link via sitemap.
+    """
+    link = choose_relevant_link(post_title, post_selftext or "")
+    images = ','.join(image_urls) if image_urls else '[No images]'
+    return LLM_PROMPT_TEMPLATE.format(
+        title=post_title,
+        body=post_selftext or '[No body content]',
+        url=post_url,
+        images=images,
+        user_thought=user_thought,
+        link=link
     )
