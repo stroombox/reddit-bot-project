@@ -1,66 +1,126 @@
-/* App.css - full replacement for your frontend styling */
+/* App.css */
 
-/* Reset and base styles */
-body, html, #root {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  font-family: Montserrat, sans-serif;
+.App {
+  text-align: center;
+  background-color: #f6f7f8;
+  min-height: 100vh;
 }
 
-/* Links styled in white */
-a, .post-title {
-  color: #ffffff;
-  text-decoration: none;
-}
-a:hover, .post-title:hover {
-  opacity: 0.8;
+.App-header {
+  background-color: #282c34;
+  padding: 16px;
+  color: white;
+  margin-bottom: 24px;
 }
 
-/* Comment list container spacing */
-.comment-list.container {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+.comment-list {
+  width: 90%;
+  max-width: 800px;
+  margin: 0 auto 40px;
 }
 
-/* Card styling */
 .comment-card {
-  background: #222;
-  border-radius: 8px;
-  padding: 1rem;
-  color: #fff;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
+
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.5rem;
-}
-.post-title {
-  font-weight: bold;
-}
-.subreddit-tag {
-  background: #444;
-  border-radius: 4px;
-  padding: 0.2rem 0.5rem;
-  font-size: 0.75rem;
 }
 
-/* Thumbnail grid for images */
+.subreddit-tag {
+  background: #e1ecf4;
+  color: #39739d;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+.selftext-preview {
+  margin: 12px 0;
+  color: #333;
+}
+
+.textarea-label {
+  font-weight: bold;
+  margin-top: 12px;
+  display: block;
+  text-align: left;
+}
+
+.initial-thoughts-textarea,
+textarea {
+  width: 100%;
+  font-size: 1em;
+  line-height: 1.4;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+/* Actions */
+.actions {
+  margin-top: 12px;
+  text-align: right;
+}
+
+button {
+  margin-left: 8px;
+  padding: 8px 14px;
+  font-size: 0.9em;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.generate-button,
+.post-direct-button {
+  background-color: #0079d3;
+  color: white;
+}
+
+.reject-button {
+  background-color: #ff4500;
+  color: white;
+}
+
+/* White hyperlinks */
+a {
+  color: white;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* IMAGE THUMBNAILS & LIGHTBOX */
 .image-preview-container {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0.5rem 0;
+  gap: 8px;
+  margin: 12px 0;
 }
+
 .post-image-preview {
-  width: 60px;
-  height: 60px;
+  width: 80px;
+  height: 80px;
   object-fit: cover;
   border-radius: 4px;
   cursor: pointer;
+  transition: transform 0.15s ease-in-out;
+}
+
+.post-image-preview:hover {
+  transform: scale(1.05);
 }
 
 /* Lightbox overlay */
@@ -70,46 +130,29 @@ a:hover, .post-title:hover {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0,0,0,0.8);
-  display: flex;
-  justify-content: center;
+  background: rgba(0,0,0,0.85);
+  display: none;
   align-items: center;
+  justify-content: center;
   z-index: 1000;
 }
-.lightbox-image {
+
+.lightbox-overlay.active {
+  display: flex;
+}
+
+.lightbox-overlay img {
   max-width: 90%;
   max-height: 90%;
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
-/* Button styles */
-.actions button {
-  background: #f79a24;
-  border: none;
-  border-radius: 4px;
-  padding: 0.5rem 1rem;
-  margin-right: 0.5rem;
+/* Close button in lightbox */
+.lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 30px;
+  font-size: 2em;
+  color: white;
   cursor: pointer;
-  font-weight: bold;
-}
-.generate-button {
-  background: #28a745;
-}
-.post-direct-button {
-  background: #dc3545;
-}
-.actions button:hover {
-  opacity: 0.9;
-}
-
-/* Textareas */
-initial-thoughts-textarea,
-.suggested-textarea {
-  width: 100%;
-  border-radius: 4px;
-  border: 1px solid #444;
-  background: #333;
-  color: #fff;
-  padding: 0.5rem;
-  margin: 0.5rem 0;
 }
