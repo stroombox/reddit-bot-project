@@ -73,6 +73,14 @@ with app.app_context():
         )
     ''')
     conn.commit()
+    # Seed a test suggestion if none exist (for debugging)
+    existing = conn.execute('SELECT COUNT(*) as cnt FROM suggestions').fetchone()['cnt']
+    if existing == 0:
+        conn.execute(
+            'INSERT OR IGNORE INTO suggestions (submission_id, title, subreddit, selftext, post_url, image_urls, created_utc) VALUES (?,?,?,?,?,?,?)',
+            ('test123', 'My Test Post', 'r/test', 'Hello world', 'https://reddit.com/r/test/test123', '[]', time.time())
+        )
+        conn.commit()
     conn.close()
 
 # ─── Google LLM Setup ───────────────────────────────────────────────────────
