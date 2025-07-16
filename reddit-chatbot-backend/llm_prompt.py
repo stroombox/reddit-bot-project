@@ -1,57 +1,136 @@
-# llm_prompt.py
-# ----------------
-# Streamlined LLM prompt: refine user-provided draft only, and suggest one verified blog resource via sitemap lookup.
+import React, { useState, useEffect, useCallback } from 'react';
+import './App.css'; 
 
-import requests
-import xml.etree.ElementTree as ET
+function App() {
+  const [pendingComments, setPendingComments] = useState([]);
+  const [initialThoughts, setInitialThoughts] = useState({});
+  const [lightboxImage, setLightboxImage] = useState(null);
 
-# Fetch and parse sitemaps at runtime to build a set of valid URLs
-def get_valid_blog_urls():
-    urls = set()
-    for sitemap_url in (
-        "https://scalpsusa.com/post-sitemap.xml",
-        "https://scalpsusa.com/page-sitemap.xml"
-    ):
-        try:
-            resp = requests.get(sitemap_url, timeout=5)
-            resp.raise_for_status()
-            root = ET.fromstring(resp.content)
-            for elem in root.findall(".//{http://www.sitemaps.org/schemas/sitemap/0.9}loc"):
-                urls.add(elem.text.strip())
-        except Exception:
-            continue
-    return urls
+  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-VALID_BLOG_URLS = get_valid_blog_urls()
+  const fetchSuggestions = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_URL}/suggestions`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      let data = await response.json();
 
-LLM_PROMPT = """
-You are a professional scalp micropigmentation (SMP) artist.
+      // Same sorting logic
+      data.sort((a, b) => {
+        const aIsPriority = a.subreddit?.toLowerCase() === 'smpchat';
+        const bIsPriority = b.subreddit?.toLowerCase() === 'smpchat';
+        if (aIsPriority && !bIsPriority) return -1;
+        if (!aIsPriority && bIsPriority) return 1;
+        return parseInt(a.id) - parseInt(b.id);
+      });
 
-When the user provides initial thoughts (user_draft), your **PRIMARY GOAL** is to refine and polish their text:
-- Preserve the user's original ideas, length, and tone.
-- Fix grammar, improve clarity, and choose natural phrasing.
-- Do **NOT** add new sentences, concepts, or sales pitches.
+      setPendingComments(data);
+      const thoughts = {};
+      data.forEach(post => thoughts[post.id] = '');
+      setInitialThoughts(thoughts);
+    } catch (err) {
+      console.error('Error fetching suggestions:', err);
+    }
+  }, [API_URL]);
 
-After refining, suggest **exactly one** relevant, **verified** blog link by selecting from the preloaded sitemap URLs.
-Append the chosen link under the heading **Resource** on its own line.
+  useEffect(() => { fetchSuggestions(); }, [fetchSuggestions]);
 
-Reddit Post Title: {post_title}
-Reddit Post Body: {post_selftext}
-User Draft: {user_thought}
+  const openLightbox = url => setLightboxImage(url);
+  const closeLightbox = () => setLightboxImage(null);
 
-**Refined Draft:**
-"""
+  const handleInitialThoughtsChange = (id, text) => {
+    setInitialThoughts(prev => ({ ...prev, [id]: text }));
+  };
 
+  const handleGenerate = async id => {
+    const thoughts = initialThoughts[id] || '';
+    setPendingComments(prev => prev.map(p => p.id === id ? { ...p, suggestedComment: 'Generating...' } : p));
+    try {
+      const res = await fetch(`${API_URL}/suggestions/${id}/generate`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ user_thought: thoughts })
+      });
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      setPendingComments(prev => prev.map(p => p.id === id ? { ...p, suggestedComment: json.suggestedComment } : p));
+    } catch {
+      alert('Failed to generate.');
+      fetchSuggestions();
+    }
+  };
 
-def build_llm_prompt(post_title, post_selftext, post_url, image_urls, user_thought):
-    """
-    Fill in the LLM_PROMPT template with post data and the user's draft.
-    """
-    imgs = ", ".join(image_urls) if isinstance(image_urls, (list, tuple)) else image_urls
-    return LLM_PROMPT.format(
-        post_title=post_title or "",
-        post_selftext=post_selftext or "",
-        post_url=post_url or "",
-        image_urls=imgs,
-        user_thought=user_thought or ""
-    )
+  const handleAction = async (id, actionType) => {
+    const post = pendingComments.find(p => p.id === id);
+    let url='', opts={};
+    if (actionType === 'approve') {
+      if (!post.suggestedComment) { alert('Generate first.'); return; }
+      url = `${API_URL}/suggestions/${id}/approve-and-post`;
+      opts = { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ approved_comment: post.suggestedComment }) };
+    }
+    if (actionType === 'reject') { url = `${API_URL}/suggestions/${id}`; opts = { method:'DELETE' }; }
+    if (actionType === 'postDirect') {
+      const txt = initialThoughts[id]; if (!txt.trim()){ alert('Type thoughts.'); return; }
+      if (!window.confirm('Post your thoughts directly?')) return;
+      url = `${API_URL}/suggestions/${id}/post-direct`;
+      opts = { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ direct_comment: txt }) };
+    }
+    try {
+      const res = await fetch(url, opts);
+      if (!res.ok) throw new Error();
+      setPendingComments(prev => prev.filter(p => p.id !== id));
+    } catch (err) {
+      alert('Action failed.');
+    }
+  };
+
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1 style={{ fontSize: '1.5rem' }}>Reddit Comment Review</h1>
+      </header>
+      <div className="comment-list container">
+        {pendingComments.length === 0 ? (
+          <p>No pending posts.</p>
+        ) : pendingComments.map(c => (
+          <div key={c.id} className="backdrop-glass card mb-4">
+            <div className="card-header">
+              <a href={c.redditPostUrl} target="_blank" rel="noopener noreferrer" className="post-title">{c.redditPostTitle}</a>
+              <div className="post-meta">{new Date(parseFloat(c.created_utc)*1000).toLocaleString(undefined,{hour:'numeric',minute:'2-digit'})}</div>
+            </div>
+            {c.image_urls && c.image_urls.length > 0 && (
+              <div className="image-preview-container">
+                {c.image_urls.map((url,i)=>(
+                  <img key={i} src={url} alt="post" onClick={()=>openLightbox(url)} className="post-image-preview" />
+                ))}
+              </div>
+            )}
+            <textarea className="initial-thoughts-textarea" placeholder="Your thoughts..." rows={2}
+              value={initialThoughts[c.id]||''} onChange={e=>handleInitialThoughtsChange(c.id,e.target.value)} />
+            {c.suggestedComment ? (
+              <>
+                <textarea className="suggested-textarea" rows={4} value={c.suggestedComment}
+                  onChange={e=>setPendingComments(prev=>prev.map(p=>p.id===c.id?{...p,suggestedComment:e.target.value}:p))} />
+                <div className="actions">
+                  <button className="button button--blue" onClick={()=>handleAction(c.id,'approve')}>Approve</button>
+                  <button className="button button--outline" onClick={()=>handleAction(c.id,'reject')}>Reject</button>
+                </div>
+              </>
+            ) : (
+              <div className="actions">
+                <button className="button button--blue" onClick={()=>handleGenerate(c.id)}>Generate</button>
+                <button className="button button--outline" onClick={()=>handleAction(c.id,'postDirect')}>Post Direct</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {lightboxImage && (
+        <div className="lightbox-overlay" onClick={closeLightbox}>
+          <img src={lightboxImage} alt="full" className="lightbox-image" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App;
