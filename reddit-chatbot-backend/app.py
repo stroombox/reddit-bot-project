@@ -8,7 +8,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import praw
 import google.generativeai as genai
-from llm_prompt import build_llm_prompt
+from llm_prompt import build_llm_prompt  # existing import
 from dotenv import load_dotenv
 
 # ─── Setup ──────────────────────────────────────────────────────────────────
@@ -43,6 +43,7 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+# Initialize database tables
 with app.app_context():
     conn = get_db_connection()
     c = conn.cursor()
@@ -74,12 +75,13 @@ with app.app_context():
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
-    llm_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    # note: we'll use genai.generate_text directly in our route
+    llm_model = genai  # placeholder
 else:
     llm_model = None
     app.logger.error("FATAL ERROR: GOOGLE_API_KEY not found.")
 
-# ─── Reddit Poster Setup ─────────────────────────────────────────────────────
+# ─── Reddit Poster Setup ────────────────────────────────────────────────────
 REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
 REDDIT_REFRESH_TOKEN = os.getenv("REDDIT_REFRESH_TOKEN")
@@ -106,7 +108,6 @@ def extract_submission_id(permalink):
     return None
 
 # ─── Routes ────────────────────────────────────────────────────────────────
-
 @app.route('/', methods=['GET'])
 def health_check():
     return 'OK', 200
@@ -131,20 +132,20 @@ def get_suggestions():
         if age > window:
             continue
         out.append({
-            "id":                row['submission_id'],
-            "redditPostTitle":   row['title'],
-            "subreddit":         row['subreddit'],
-            "redditPostSelftext":row['selftext'],
-            "redditPostUrl":     row['post_url'],
-            "image_urls":        json.loads(row['image_urls']),
-            "suggestedComment":  row['suggested_comment']
+            "id":                 row['submission_id'],
+            "redditPostTitle":    row['title'],
+            "subreddit":          row['subreddit'],
+            "redditPostSelftext": row['selftext'],
+            "redditPostUrl":      row['post_url'],
+            "image_urls":         json.loads(row['image_urls']),
+            "suggestedComment":   row['suggested_comment']
         })
     return jsonify(out)
 
 @app.route('/suggestions', methods=['POST'])
 def add_suggestion():
     data = request.json or {}
-    sub_id = extract_submission_id(data.get("redditPostUrl",""))
+    sub_id = extract_submission_id(data.get("redditPostUrl", ""))
     if not sub_id:
         return jsonify({"error":"Invalid Reddit URL"}), 400
 
@@ -185,13 +186,22 @@ def generate_comment_for_post(submission_id):
         return jsonify({"error":"Post not found"}), 404
 
     prompt = build_llm_prompt(
-        row['title'], row['selftext'], row['post_url'], json.loads(row['image_urls']), user_thought
+        row['title'],
+        row['selftext'],
+        row['post_url'],
+        json.loads(row['image_urls']),
+        user_thought
     )
+
     try:
-        resp    = llm_model.generate_content(prompt)
-        comment = getattr(resp, 'text', '').strip()
+        response = genai.generate_text(
+            model='gemini-1.5-flash-latest',
+            prompt=prompt
+        )
+        comment = response.text.strip()
         if not comment:
             raise ValueError("Empty LLM response")
+
         conn = get_db_connection()
         conn.execute(
             'UPDATE suggestions SET suggested_comment = ? WHERE submission_id = ?',
@@ -199,9 +209,10 @@ def generate_comment_for_post(submission_id):
         )
         conn.commit()
         conn.close()
-        return jsonify({"suggestedComment":comment, "id":submission_id})
+        return jsonify({"suggestedComment": comment, "id": submission_id})
     except Exception as e:
-        return jsonify({"error":str(e)}), 500
+        app.logger.error(f"LLM generation error for {submission_id}: {e}", exc_info=True)
+        return jsonify({"error":"LLM generation failed"}), 500
 
 @app.route('/suggestions/<submission_id>/approve-and-post', methods=['POST'])
 def approve_and_post_comment(submission_id):
@@ -211,7 +222,6 @@ def approve_and_post_comment(submission_id):
         return jsonify({"error":"Cannot post empty comment"}), 400
     if not reddit_poster:
         return jsonify({"error":"Reddit poster not configured"}), 500
-
     try:
         submission = reddit_poster.submission(id=submission_id)
         submission.reply(comment_text)
@@ -219,7 +229,7 @@ def approve_and_post_comment(submission_id):
         return jsonify({"error":str(e)}), 500
 
     now_ts = time.time()
-    conn   = get_db_connection()
+    conn = get_db_connection()
     conn.execute(
         'INSERT OR IGNORE INTO posted_submissions(submission_id, timestamp) VALUES(?,?)',
         (submission_id, now_ts)
@@ -251,7 +261,6 @@ def post_direct_comment(submission_id):
         return jsonify({"error":"Empty direct comment"}), 400
     if not reddit_poster:
         return jsonify({"error":"Reddit poster not configured"}), 500
-
     try:
         submission = reddit_poster.submission(id=submission_id)
         submission.reply(text)
@@ -259,7 +268,7 @@ def post_direct_comment(submission_id):
         return jsonify({"error":str(e)}), 500
 
     now_ts = time.time()
-    conn   = get_db_connection()
+    conn = get_db_connection()
     conn.execute(
         'INSERT OR IGNORE INTO posted_submissions(submission_id, timestamp) VALUES(?,?)',
         (submission_id, now_ts)
