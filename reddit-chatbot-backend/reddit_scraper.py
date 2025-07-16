@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import praw
 import requests
 
-# Load environment variables from .env (skipped in production if absent)
+# Load environment variables
 load_dotenv()
 
 # Environment configuration
@@ -12,7 +12,7 @@ REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
 REDDIT_REFRESH_TOKEN = os.getenv("REDDIT_REFRESH_TOKEN")
 REDDIT_USER_AGENT    = os.getenv("REDDIT_USER_AGENT")
-FLASK_BACKEND_URL    = os.getenv("FLASK_BACKEND_URL", "").rstrip('/')
+FLASK_BACKEND_URL    = os.getenv("FLASK_BACKEND_URL", "").strip().rstrip('/')
 
 # Validate configuration
 required_vars = [
@@ -45,21 +45,19 @@ KEYWORDS = [
 
 def get_new_smp_posts(subreddit_name: str, limit: int = 25) -> list:
     """
-    Fetch posts from a subreddit within a timeframe,
-    skipping ones we've already commented on or that don't match keywords.
+    Fetch new SMP-related posts from a subreddit, skipping old, already-commented, or irrelevant posts.
     """
-    now    = time.time()
-    # 3 days for SMPchat, 1 day for others
+    now = time.time()
     window = 3*24*60*60 if subreddit_name.lower() == "smpchat" else 24*60*60
     cutoff = now - window
     new_posts = []
 
     for sub in reddit.subreddit(subreddit_name).new(limit=limit):
-        # skip old posts
+        # Skip old posts
         if sub.created_utc < cutoff:
             continue
 
-        # skip if bot already commented
+        # Skip if bot already commented
         sub.comments.replace_more(limit=0)
         if any(
             comment.author and comment.author.name.lower() == BOT_USERNAME
@@ -67,13 +65,13 @@ def get_new_smp_posts(subreddit_name: str, limit: int = 25) -> list:
         ):
             continue
 
-        # filter by keywords (for non-SMPchat)
+        # Keyword filter for non-SMPchat
         title_text = sub.title.lower()
-        body_text  = sub.selftext.lower()
+        body_text = sub.selftext.lower()
         if subreddit_name.lower() != "smpchat" and not any(k in title_text or k in body_text for k in KEYWORDS):
             continue
 
-        # gather image URLs
+        # Gather images
         images = []
         if hasattr(sub, "gallery_data") and sub.gallery_data:
             for item in sub.gallery_data["items"]:
@@ -86,24 +84,21 @@ def get_new_smp_posts(subreddit_name: str, limit: int = 25) -> list:
             images.append(sub.url)
 
         new_posts.append({
-            "id":          sub.id,
-            "title":       sub.title,
-            "selftext":    sub.selftext,
-            "permalink":   f"https://reddit.com{sub.permalink}",
-            "subreddit":   sub.subreddit.display_name,
-            "url":         sub.url,
-            "image_urls":  images
+            "submission_id":     sub.id,
+            "redditPostTitle":    sub.title,
+            "subreddit":          sub.subreddit.display_name,
+            "redditPostSelftext": sub.selftext,
+            "redditPostUrl":      f"https://reddit.com{sub.permalink}",
+            "image_urls":         images
         })
 
     return new_posts
 
 
 if __name__ == "__main__":
-    # Subreddits to scan
     subs = ["SMPchat", "Hairloss", "bald", "tressless"]
     all_new = []
 
-    # Fetch new posts from each subreddit
     for s in subs:
         posts = get_new_smp_posts(s, limit=50)
         print(f"Fetched {len(posts)} new from r/{s}")
@@ -111,18 +106,22 @@ if __name__ == "__main__":
 
     print(f"Total new posts: {len(all_new)}")
 
-    # POST each new entry to the Flask backend
     for post in all_new:
         payload = {
-            "redditPostTitle":    post["title"],
+            "submission_id":     post["submission_id"],
+            "redditPostTitle":    post["redditPostTitle"],
             "subreddit":          post["subreddit"],
-            "redditPostSelftext": post["selftext"],
-            "redditPostUrl":      post["permalink"],
+            "redditPostSelftext": post["redditPostSelftext"],
+            "redditPostUrl":      post["redditPostUrl"],
             "image_urls":         post["image_urls"]
         }
         try:
-            resp = requests.post(f"{FLASK_BACKEND_URL}/suggestions", json=payload, timeout=10)
+            resp = requests.post(
+                f"{FLASK_BACKEND_URL}/suggestions",
+                json=payload,
+                timeout=10
+            )
             resp.raise_for_status()
-            print(f"✅ Sent {post['id']}: {post['title']}")
+            print(f"✅ Sent {post['submission_id']}: {post['redditPostTitle']}")
         except Exception as e:
-            print(f"❌ Failed to send {post['id']}: {e}")
+            print(f"❌ Failed to send {post['submission_id']}: {e}")
