@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 # ─── Setup ──────────────────────────────────────────────────────────────────
 load_dotenv()
 app = Flask(__name__)
-# Enable CORS for all routes
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Database file
@@ -36,12 +35,10 @@ def fetch_sitemap_urls():
             urls.append(loc.text)
     return urls
 
-# Load blog links once
 BLOG_URLS = fetch_sitemap_urls()
 app.logger.info(f"Loaded {len(BLOG_URLS)} blog URLs.")
 
-# ─── Database Helpers ──────────────────────────────────────────────────────
-
+# ─── Database Helpers ───────────────────────────────────────────────────────
 def get_db_connection():
     conn = sqlite3.connect(DATABASE_FILE)
     conn.row_factory = sqlite3.Row
@@ -77,9 +74,10 @@ with app.app_context():
 
 # ─── Google API Key and Model ───────────────────────────────────────────────
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-# Default to text-bison; do NOT include the "models/" prefix here
-MODEL_NAME    = os.getenv("GENERATIVE_MODEL", "text-bison-001")
-REST_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta2/models/{MODEL_NAME}:generateText"
+# Default to text-bison; can override with GENERATIVE_MODEL env var
+MODEL_NAME = os.getenv("GENERATIVE_MODEL", "text-bison-001")
+RESOURCE = MODEL_NAME if MODEL_NAME.startswith("models/") else f"models/{MODEL_NAME}"
+REST_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta2/{RESOURCE}:generateText"
 
 # ─── Reddit Poster Setup ────────────────────────────────────────────────────
 REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
@@ -98,6 +96,15 @@ else:
     reddit_poster = None
     app.logger.error("Reddit poster not configured; posting disabled.")
 
+# ─── Utility ────────────────────────────────────────────────────────────────
+def extract_submission_id(permalink):
+    parts = permalink.rstrip('/').split('/')
+    if 'comments' in parts:
+        idx = parts.index('comments')
+        if len(parts) > idx + 1:
+            return parts[idx + 1]
+    return None
+
 # ─── Routes ─────────────────────────────────────────────────────────────────
 @app.route('/', methods=['GET'])
 def health():
@@ -107,7 +114,7 @@ def health():
 def list_suggestions():
     conn = get_db_connection()
     rows = conn.execute('SELECT * FROM suggestions').fetchall()
-    posted = {r['submission_id'] for r in conn.execute('SELECT submission_id FROM posted_submissions')}
+    posted = {r['submission_id'] for r in conn.execute('SELECT submission_id FROM posted_submissions').fetchall()}
     conn.close()
 
     out = []
@@ -130,8 +137,7 @@ def add_suggestion():
     data = request.get_json() or {}
     conn = get_db_connection()
     conn.execute(
-        'INSERT OR IGNORE INTO suggestions (submission_id, title, subreddit, selftext, post_url, image_urls, created_utc) '
-        'VALUES (?,?,?,?,?,?,?)',
+        'INSERT OR IGNORE INTO suggestions (submission_id, title, subreddit, selftext, post_url, image_urls, created_utc) VALUES (?,?,?,?,?,?,?)',
         (
             data.get('submission_id'),
             data.get('redditPostTitle') or data.get('title',''),
@@ -153,7 +159,6 @@ def generate_comment(submission_id):
     data = request.get_json() or {}
     user_thought = data.get('user_thought','')
 
-    # Fetch suggestion row
     conn = get_db_connection()
     row = conn.execute('SELECT * FROM suggestions WHERE submission_id=?',(submission_id,)).fetchone()
     conn.close()
@@ -166,7 +171,6 @@ def generate_comment(submission_id):
     )
     app.logger.debug(f"Prompt for {submission_id}: {prompt}")
 
-    # Call Generative Language REST API
     try:
         resp = requests.post(
             REST_ENDPOINT,
@@ -175,9 +179,9 @@ def generate_comment(submission_id):
             json={"prompt": {"text": prompt}, "temperature": 0.7}
         )
         resp.raise_for_status()
-        result     = resp.json()
+        result = resp.json()
         candidates = result.get("candidates") or []
-        comment    = candidates[0].get("output","").strip() if candidates else ''
+        comment = candidates[0].get("output","").strip() if candidates else ''
         if not comment:
             raise ValueError("empty response from generative API")
 
