@@ -1,216 +1,134 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import './App.css';
-
-function formatTimestamp(utcSeconds) {
-  const d = new Date(utcSeconds * 1000);
-  // e.g. "Jul 8, 2025 3:45 PM"
-  const date = d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
-  const time = d.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  });
-  return `${date} ${time}`;
-}
+import './App.css'; 
 
 function App() {
   const [pendingComments, setPendingComments] = useState([]);
   const [initialThoughts, setInitialThoughts] = useState({});
+  const [lightboxImage, setLightboxImage] = useState(null);
 
   const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
   const fetchSuggestions = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/suggestions`);
-      if (!res.ok) throw new Error(res.statusText);
-      const data = await res.json();
-      // Initialize thoughts state
-      const thoughtsInit = {};
-      data.forEach(post => { thoughtsInit[post.id] = ''; });
-      setInitialThoughts(thoughtsInit);
+      const response = await fetch(`${API_URL}/suggestions`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      let data = await response.json();
+
+      // Same sorting logic
+      data.sort((a, b) => {
+        const aIsPriority = a.subreddit?.toLowerCase() === 'smpchat';
+        const bIsPriority = b.subreddit?.toLowerCase() === 'smpchat';
+        if (aIsPriority && !bIsPriority) return -1;
+        if (!aIsPriority && bIsPriority) return 1;
+        return parseInt(a.id) - parseInt(b.id);
+      });
+
       setPendingComments(data);
+      const thoughts = {};
+      data.forEach(post => thoughts[post.id] = '');
+      setInitialThoughts(thoughts);
     } catch (err) {
-      console.error("Error fetching suggestions:", err);
+      console.error('Error fetching suggestions:', err);
     }
   }, [API_URL]);
 
-  useEffect(() => {
-    fetchSuggestions();
-  }, [fetchSuggestions]);
+  useEffect(() => { fetchSuggestions(); }, [fetchSuggestions]);
+
+  const openLightbox = url => setLightboxImage(url);
+  const closeLightbox = () => setLightboxImage(null);
 
   const handleInitialThoughtsChange = (id, text) => {
     setInitialThoughts(prev => ({ ...prev, [id]: text }));
   };
 
-  const handleGenerateSuggestion = async (id) => {
-    const userThought = initialThoughts[id] || '';
-    // Optimistic UI placeholder
-    setPendingComments(pc =>
-      pc.map(p => p.id === id ? { ...p, suggestedComment: 'Generating…' } : p)
-    );
+  const handleGenerate = async id => {
+    const thoughts = initialThoughts[id] || '';
+    setPendingComments(prev => prev.map(p => p.id === id ? { ...p, suggestedComment: 'Generating...' } : p));
     try {
       const res = await fetch(`${API_URL}/suggestions/${id}/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_thought: userThought })
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ user_thought: thoughts })
       });
-      if (!res.ok) throw new Error(await res.text());
-      const { suggestedComment } = await res.json();
-      setPendingComments(pc =>
-        pc.map(p => p.id === id ? { ...p, suggestedComment } : p)
-      );
-    } catch (err) {
-      console.error(err);
-      // Rollback
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      setPendingComments(prev => prev.map(p => p.id === id ? { ...p, suggestedComment: json.suggestedComment } : p));
+    } catch {
+      alert('Failed to generate.');
       fetchSuggestions();
     }
   };
 
   const handleAction = async (id, actionType) => {
-    let url, options;
     const post = pendingComments.find(p => p.id === id);
-
+    let url='', opts={};
     if (actionType === 'approve') {
+      if (!post.suggestedComment) { alert('Generate first.'); return; }
       url = `${API_URL}/suggestions/${id}/approve-and-post`;
-      options = {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approved_comment: post.suggestedComment })
-      };
-    } else if (actionType === 'reject') {
-      url = `${API_URL}/suggestions/${id}`;
-      options = { method: 'DELETE' };
-    } else if (actionType === 'postDirect') {
+      opts = { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ approved_comment: post.suggestedComment }) };
+    }
+    if (actionType === 'reject') { url = `${API_URL}/suggestions/${id}`; opts = { method:'DELETE' }; }
+    if (actionType === 'postDirect') {
+      const txt = initialThoughts[id]; if (!txt.trim()){ alert('Type thoughts.'); return; }
+      if (!window.confirm('Post your thoughts directly?')) return;
       url = `${API_URL}/suggestions/${id}/post-direct`;
-      options = {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ direct_comment: initialThoughts[id] })
-      };
+      opts = { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ direct_comment: txt }) };
     }
-
     try {
-      const res = await fetch(url, options);
-      if (!res.ok) throw new Error(await res.text());
-      // Remove from UI
-      setPendingComments(pc => pc.filter(p => p.id !== id));
+      const res = await fetch(url, opts);
+      if (!res.ok) throw new Error();
+      setPendingComments(prev => prev.filter(p => p.id !== id));
     } catch (err) {
-      console.error(err);
-      alert('Action failed. See console for details.');
+      alert('Action failed.');
     }
-  };
-
-  const handleEdit = (id, newText) => {
-    setPendingComments(pc =>
-      pc.map(p => p.id === id ? { ...p, suggestedComment: newText } : p)
-    );
   };
 
   return (
     <div className="App">
       <header className="App-header">
-        Reddit Comment Review
+        <h1 style={{ fontSize: '1.5rem' }}>Reddit Comment Review</h1>
       </header>
-
-      <div className="comment-list">
+      <div className="comment-list container">
         {pendingComments.length === 0 ? (
-          <p>No pending posts. Check back later.</p>
-        ) : pendingComments.map(comment => (
-          <div key={comment.id} className="comment-card">
-
+          <p>No pending posts.</p>
+        ) : pendingComments.map(c => (
+          <div key={c.id} className="backdrop-glass card mb-4">
             <div className="card-header">
-              <h3>
-                <a href={comment.redditPostUrl}
-                   target="_blank" rel="noopener noreferrer">
-                  {comment.redditPostTitle}
-                </a>
-              </h3>
-              <span className="subreddit-tag">r/{comment.subreddit}</span>
+              <a href={c.redditPostUrl} target="_blank" rel="noopener noreferrer" className="post-title">{c.redditPostTitle}</a>
+              <div className="post-meta">{new Date(parseFloat(c.created_utc)*1000).toLocaleString(undefined,{hour:'numeric',minute:'2-digit'})}</div>
             </div>
-
-            {/* timestamp */}
-            {comment.created_utc && (
-              <div
-                style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                {formatTimestamp(comment.created_utc)}
-              </div>
-            )}
-
-            {comment.redditPostSelftext && (
-              <p className="selftext-preview">
-                {comment.redditPostSelftext.length > 200
-                  ? comment.redditPostSelftext.slice(0, 200) + '…'
-                  : comment.redditPostSelftext}
-              </p>
-            )}
-
-            {comment.image_urls?.length > 0 && (
+            {c.image_urls && c.image_urls.length > 0 && (
               <div className="image-preview-container">
-                {comment.image_urls.map((src, i) => (
-                  <img
-                    key={i}
-                    className="post-image-preview"
-                    src={src}
-                    alt={`Attachment ${i + 1}`}
-                  />
+                {c.image_urls.map((url,i)=>(
+                  <img key={i} src={url} alt="post" onClick={()=>openLightbox(url)} className="post-image-preview" />
                 ))}
               </div>
             )}
-
-            <label className="textarea-label">Your Initial Thoughts:</label>
-            <textarea
-              className="initial-thoughts-textarea"
-              rows="2"
-              value={initialThoughts[comment.id] || ''}
-              onChange={e =>
-                handleInitialThoughtsChange(comment.id, e.target.value)
-              }
-            />
-
-            {comment.suggestedComment ? (
+            <textarea className="initial-thoughts-textarea" placeholder="Your thoughts..." rows={2}
+              value={initialThoughts[c.id]||''} onChange={e=>handleInitialThoughtsChange(c.id,e.target.value)} />
+            {c.suggestedComment ? (
               <>
-                <label className="textarea-label">Suggested Comment:</label>
-                <textarea
-                  className="initial-thoughts-textarea"
-                  rows="4"
-                  value={comment.suggestedComment}
-                  onChange={e => handleEdit(comment.id, e.target.value)}
-                />
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    className="generate-button"
-                    onClick={() => handleAction(comment.id, 'approve')}>
-                    Approve & Post
-                  </button>
-                  <button
-                    className="post-direct-button"
-                    onClick={() => handleAction(comment.id, 'reject')}>
-                    Reject
-                  </button>
+                <textarea className="suggested-textarea" rows={4} value={c.suggestedComment}
+                  onChange={e=>setPendingComments(prev=>prev.map(p=>p.id===c.id?{...p,suggestedComment:e.target.value}:p))} />
+                <div className="actions">
+                  <button className="button button--blue" onClick={()=>handleAction(c.id,'approve')}>Approve</button>
+                  <button className="button button--outline" onClick={()=>handleAction(c.id,'reject')}>Reject</button>
                 </div>
               </>
             ) : (
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  className="generate-button"
-                  onClick={() => handleGenerateSuggestion(comment.id)}>
-                  Generate Suggestion
-                </button>
-                <button
-                  className="post-direct-button"
-                  onClick={() => handleAction(comment.id, 'postDirect')}>
-                  Post My Thoughts Directly
-                </button>
+              <div className="actions">
+                <button className="button button--blue" onClick={()=>handleGenerate(c.id)}>Generate</button>
+                <button className="button button--outline" onClick={()=>handleAction(c.id,'postDirect')}>Post Direct</button>
               </div>
             )}
-
           </div>
         ))}
       </div>
+
+      {lightboxImage && (
+        <div className="lightbox-overlay" onClick={closeLightbox}>
+          <img src={lightboxImage} alt="full" className="lightbox-image" />
+        </div>
+      )}
     </div>
   );
 }
