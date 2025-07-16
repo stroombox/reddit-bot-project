@@ -153,7 +153,7 @@ function App() {
               </div>
 
               {c.image_urls?.length > 0 && (
-                <div className="image-preview-container" style={{ marginBottom: '0.75rem' }}>
+                <div className="image-preview-container" style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   {c.image_urls.map((url, i) => (
                     <img
                       key={i}
@@ -161,7 +161,9 @@ function App() {
                       alt="post"
                       onClick={() => openLightbox(url)}
                       style={{
+                        width: '300px',
                         maxWidth: '100%',
+                        height: 'auto',
                         cursor: 'pointer',
                         borderRadius: '0.25rem'
                       }}
