@@ -20,12 +20,13 @@
 }
 
 .comment-card {
-  background: white;
-  border: 1px solid #ddd;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid #0079d3;
   border-radius: 6px;
   padding: 16px;
   margin-bottom: 24px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  backdrop-filter: blur(8px);
 }
 
 .card-header {
@@ -45,6 +46,23 @@
 .selftext-preview {
   margin: 12px 0;
   color: #333;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  position: relative;
+}
+
+.selftext-preview::after {
+  content: 'See more';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  background: linear-gradient(to right, rgba(255,255,255,0), #f6f7f8 50%);
+  padding-left: 8px;
+  color: #0079d3;
+  font-weight: bold;
+  cursor: pointer;
 }
 
 .textarea-label {
@@ -92,17 +110,7 @@ button {
   color: white;
 }
 
-/* White hyperlinks */
-a {
-  color: white;
-  text-decoration: none;
-}
-
-a:hover {
-  text-decoration: underline;
-}
-
-/* IMAGE THUMBNAILS & LIGHTBOX */
+/* === IMAGE THUMBNAILS & LIGHTBOX === */
 .image-preview-container {
   display: flex;
   flex-wrap: wrap;
@@ -111,8 +119,8 @@ a:hover {
 }
 
 .post-image-preview {
-  width: 80px;
-  height: 80px;
+  width: 300px;
+  height: auto;
   object-fit: cover;
   border-radius: 4px;
   cursor: pointer;
@@ -120,7 +128,7 @@ a:hover {
 }
 
 .post-image-preview:hover {
-  transform: scale(1.05);
+  transform: scale(1.03);
 }
 
 /* Lightbox overlay */
