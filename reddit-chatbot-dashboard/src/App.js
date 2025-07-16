@@ -130,7 +130,7 @@ function App() {
                 overflow: 'hidden'
               }}
             >
-              <div className="card-header" style={{ marginBottom: '0.5rem' }}>
+              <div className="card-header" style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <a
                   href={c.redditPostUrl}
                   target="_blank"
@@ -140,29 +140,17 @@ function App() {
                 >
                   {c.redditPostTitle}
                 </a>
-                {/* only show date if available */}
-                {c.created_utc && (
-                  <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>
-                    {new Date(parseFloat(c.created_utc) * 1000).toLocaleString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit',
-                      hour12: true
-                    })}
-                  </div>
-                )}
+                <span style={{ fontSize: '0.875rem', opacity: 0.8 }}>
+                  r/{c.subreddit}
+                </span>
               </div>
 
-              {/* show post selftext */}
               {c.redditPostSelftext && (
                 <p style={{ marginBottom: '0.75rem', fontSize: '0.875rem', opacity: 0.9 }}>
                   {c.redditPostSelftext}
                 </p>
               )}
 
-              {/* image thumbnails */}
               {c.image_urls?.length > 0 && (
                 <div className="image-preview-container" style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   {c.image_urls.map((url, i) => (
@@ -203,7 +191,7 @@ function App() {
                     Suggested Comment:
                   </label>
                   <textarea
-                    className="suggested-textarea"
+                   	className="suggested-textarea"
                     rows={4}
                     value={c.suggestedComment}
                     onChange={e => setPendingComments(prev =>
