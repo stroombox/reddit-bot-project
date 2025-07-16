@@ -7,13 +7,13 @@ import xml.etree.ElementTree as ET
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import praw
-import google.generativeai as genai
 from llm_prompt import build_llm_prompt
 from dotenv import load_dotenv
 
 # ─── Setup ──────────────────────────────────────────────────────────────────
 load_dotenv()
 app = Flask(__name__)
+# Enable CORS for all routes
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Database file
@@ -41,6 +41,7 @@ BLOG_URLS = fetch_sitemap_urls()
 app.logger.info(f"Loaded {len(BLOG_URLS)} blog URLs.")
 
 # ─── Database Helpers ──────────────────────────────────────────────────────
+
 def get_db_connection():
     conn = sqlite3.connect(DATABASE_FILE)
     conn.row_factory = sqlite3.Row
@@ -74,12 +75,11 @@ with app.app_context():
     conn.commit()
     conn.close()
 
-# ─── Google LLM Setup ───────────────────────────────────────────────────────
+# ─── Google API Key and Model ───────────────────────────────────────────────
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
-else:
-    app.logger.error("Missing GOOGLE_API_KEY; LLM disabled.")
+# Default to text-bison; can override with GENERATIVE_MODEL env var
+MODEL_NAME = os.getenv("GENERATIVE_MODEL", "models/text-bison-001")
+REST_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta2/models/{MODEL_NAME}:generateText"
 
 # ─── Reddit Poster Setup ────────────────────────────────────────────────────
 REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
@@ -152,6 +152,7 @@ def generate_comment(submission_id):
     data = request.get_json() or {}
     user_thought = data.get('user_thought','')
 
+    # Fetch suggestion row
     conn = get_db_connection()
     row = conn.execute('SELECT * FROM suggestions WHERE submission_id=?',(submission_id,)).fetchone()
     conn.close()
@@ -164,26 +165,30 @@ def generate_comment(submission_id):
     )
     app.logger.debug(f"Prompt for {submission_id}: {prompt}")
 
+    # Call Generative Language REST API
     try:
-        chat_resp = genai.chat.completions.create(
-            model='gemini-1.5-flash-latest',
-            messages=[{"author":"user","content":prompt}]
+        resp = requests.post(
+            REST_ENDPOINT,
+            headers={"Content-Type":"application/json"},
+            params={"key": GOOGLE_API_KEY},
+            json={"prompt": {"text": prompt}, "temperature": 0.7}
         )
-        candidate = chat_resp.candidates[0]
-        comment = candidate.message.content.strip() if hasattr(candidate, 'message') else candidate.content.strip()
-
+        resp.raise_for_status()
+        result = resp.json()
+        candidates = result.get("candidates") or []
+        comment = candidates[0].get("output","").strip() if candidates else ''
         if not comment:
-            raise ValueError("empty response from LLM")
+            raise ValueError("empty response from generative API")
 
         conn = get_db_connection()
         conn.execute('UPDATE suggestions SET suggested_comment=? WHERE submission_id=?',(comment,submission_id))
         conn.commit()
         conn.close()
-        return jsonify({"suggestedComment":comment}), 200
+        return jsonify({"suggestedComment": comment}), 200
 
     except Exception as e:
         app.logger.error(f"LLM generation failed for {submission_id}: {e}")
-        return jsonify({"error":str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/suggestions/<submission_id>/approve-and-post', methods=['POST'])
 def approve_and_post(submission_id):
@@ -203,7 +208,7 @@ def approve_and_post(submission_id):
     conn.execute('DELETE FROM suggestions WHERE submission_id=?',(submission_id,))
     conn.commit()
     conn.close()
-    return jsonify({"message":"posted"}),200
+    return jsonify({"message":"posted"}), 200
 
 @app.route('/suggestions/<submission_id>', methods=['DELETE'])
 def delete_suggestion(submission_id):
@@ -211,7 +216,7 @@ def delete_suggestion(submission_id):
     conn.execute('DELETE FROM suggestions WHERE submission_id=?',(submission_id,))
     conn.commit()
     conn.close()
-    return jsonify({"message":"deleted"}),200
+    return jsonify({"message":"deleted"}), 200
 
 @app.route('/suggestions/<submission_id>/post-direct', methods=['POST'])
 def post_direct(submission_id):
@@ -227,7 +232,7 @@ def post_direct(submission_id):
     conn.execute('DELETE FROM suggestions WHERE submission_id=?',(submission_id,))
     conn.commit()
     conn.close()
-    return jsonify({"message":"direct posted"}),200
+    return jsonify({"message":"direct posted"}), 200
 
 if __name__=='__main__':
     app.run(debug=True)
