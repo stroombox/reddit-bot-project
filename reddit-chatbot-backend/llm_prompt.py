@@ -2,65 +2,65 @@ import random
 import re
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
-# This is the new helper function to add UTM parameters to a URL
+# --- PROMPT TEMPLATES ---
+
+# This prompt is used ONLY when the user provides "Initial Thoughts".
+# It is highly restrictive and focused on editing.
+EDITING_PROMPT_TEMPLATE = """
+You are a master copy editor. Your ONLY task is to take the "User's Draft" below and refine it.
+Follow these rules strictly:
+1.  Correct any spelling or grammatical errors.
+2.  Improve the phrasing to match the persona of a witty, knowledgeable SMP expert.
+3.  **DO NOT** add any new topics, ideas, or information. The core message and intent of the user's draft MUST be preserved.
+4.  After refining the text, on a new line, add a natural transition to the "Relevant Blog Link" provided.
+5.  You **MUST** format the link using Reddit Markdown: `[Display Text](URL)`.
+
+---
+- User's Draft: "{thoughts}"
+- Relevant Blog Link: {blog_link}
+---
+
+**Your Refined Comment (Formatted with Markdown Link):**
+"""
+
+# This prompt is used ONLY when the user leaves the thoughts box blank.
+# It gives the AI creative freedom.
+GENERATION_PROMPT_TEMPLATE = """
+You are a veteran SMP artist with a knowledgeable, empathetic, and witty tone.
+Your goal is to provide a short (1-3 sentences), natural-sounding, and helpful Reddit comment based on the post details below.
+
+After your comment, on a new line, add a natural transition to the provided "Relevant Blog Link".
+You **MUST** format the link using Reddit Markdown: `[Display Text](URL)`.
+
+---
+- Post Title: {title}
+- Post Content: {selftext}
+- Relevant Blog Link: {blog_link}
+---
+
+**Your Helpful Comment (Formatted with Markdown Link):**
+"""
+
 def add_utm_parameters(url: str) -> str:
     """Appends UTM tracking parameters to a given URL."""
+    if not url or url == "None":
+        return "None"
     utm_params = {
         'utm_source': 'reddit_proj',
         'utm_campaign': 'reddit'
     }
-    # Parse the URL to safely add new query parameters
-    url_parts = urlparse(url)
-    query = parse_qs(url_parts.query)
+    url_parts = list(urlparse(url))
+    query = dict(parse_qs(url_parts[4]))
     query.update(utm_params)
-    
-    # Rebuild the URL with the new parameters
-    new_query_string = urlencode(query, doseq=True)
-    new_url_parts = url_parts._replace(query=new_query_string)
-    
-    return urlunparse(new_url_parts)
-
-
-PROMPT_TEMPLATE = """
-You are an expert SMP artist with a knowledgeable, empathetic, and witty tone. Your goal is to provide a short, natural-sounding, and helpful Reddit comment.
-
-**Your Task:**
-Based on the Reddit post details below, follow these strict rules:
-
-1.  **If "User Thoughts" are provided:**
-    - Your ONLY job is to refine and polish the user's text.
-    - Correct grammar and spelling, and improve the verbiage to match your persona.
-    - **DO NOT** add new ideas, subjects, or information. The length and core message must remain almost identical to the user's thoughts.
-    - Example: If the user says "looks great brother!", you could refine it to "That's a clean result, looks great brother!"
-
-2.  **If "User Thoughts" are "None":**
-    - Craft a new, helpful comment from scratch (1-3 sentences).
-
-3.  **Link Integration (IMPORTANT):**
-    - After your main comment, add a relevant blog link on a new line.
-    - You **MUST** format the link using Reddit Markdown: `[Display Text](URL)`.
-    - The display text should be natural and relevant to the article. For example: `You can read more about what to expect from the SMP process here: [What to Expect When Getting SMP](https://scalpsusa.com/what-to-expect-when-getting-smp/?utm_source=reddit_proj&utm_campaign=reddit)`
-
-**Reddit Post Details:**
-- Post Title: {title}
-- Post Content: {selftext}
-- Post URL: {url}
-- Image URLs: {images}
-- User Thoughts: {thoughts}
-- Relevant Blog Link with UTM parameters: {blog_link}
-
-**Final Reddit Comment (Formatted with Markdown Link):**
-"""
+    url_parts[4] = urlencode(query)
+    return urlunparse(url_parts)
 
 def choose_relevant_blog_link(blog_urls, text):
-    """
-    Chooses the most relevant blog link from a list based on text content.
-    """
+    """Chooses the most relevant blog link from a list based on text content."""
     text = text.lower()
     if not blog_urls:
         return "None"
 
-    # Simple keyword matching based on URL slugs
     for url in blog_urls:
         slug = url.rstrip('/').split('/')[-1]
         for token in re.split(r'[-_]', slug):
@@ -71,22 +71,23 @@ def choose_relevant_blog_link(blog_urls, text):
 
 def build_llm_prompt(title, selftext, url, image_urls, user_thoughts, blog_urls):
     """
-    Builds the complete prompt to be sent to the language model.
+    Builds the complete prompt by selecting the correct template based on user input.
     """
     combined_text = f"{title} {selftext}"
-    # Choose the base blog link
     base_blog_link = choose_relevant_blog_link(blog_urls, combined_text)
-    
-    # Add UTM parameters to the chosen link
-    final_blog_link_with_utm = add_utm_parameters(base_blog_link) if base_blog_link != "None" else "None"
+    final_blog_link_with_utm = add_utm_parameters(base_blog_link)
 
-    images_str = ", ".join(image_urls) if image_urls else "None"
-    
-    return PROMPT_TEMPLATE.format(
-        blog_link=final_blog_link_with_utm,
-        title=title,
-        selftext=selftext or "None",
-        url=url,
-        images=images_str,
-        thoughts=user_thoughts or "None"
-    )
+    # --- NEW LOGIC: Choose the prompt based on user_thoughts ---
+    if user_thoughts and user_thoughts.strip():
+        # User provided thoughts, so we use the strict "Editor" prompt
+        return EDITING_PROMPT_TEMPLATE.format(
+            thoughts=user_thoughts,
+            blog_link=final_blog_link_with_utm
+        )
+    else:
+        # User did not provide thoughts, so we use the creative "Creator" prompt
+        return GENERATION_PROMPT_TEMPLATE.format(
+            title=title,
+            selftext=selftext or "None",
+            blog_link=final_blog_link_with_utm
+        )
