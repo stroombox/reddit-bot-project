@@ -62,7 +62,7 @@ html, body, #root {
 .card-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start; /* Changed to flex-start for better alignment */
 }
 
 .post-title {
@@ -81,15 +81,13 @@ html, body, #root {
   padding: 0.25rem 0.5rem;
   border-radius: 6px;
   font-size: 0.75rem;
+  flex-shrink: 0; /* Prevents tag from shrinking */
 }
 
 .selftext-preview {
   color: var(--text-secondary);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  position: relative;
+  white-space: pre-wrap; /* Allows text to wrap and respects newlines */
+  word-break: break-word;
 }
 
 /* Thumbnail grid */
@@ -193,4 +191,31 @@ a {
 }
 a:hover {
   text-decoration: underline;
+}
+
+/* --- ADDED/MODIFIED STYLES --- */
+
+.title-author-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px; /* This creates the space between the title and author */
+  text-align: left; /* Ensure text aligns to the left */
+  flex-grow: 1;
+  margin-right: 1rem;
+}
+
+.author-name {
+  color: var(--text-secondary);
+  font-size: 0.75rem; /* Smaller font size */
+  font-style: italic;
+}
+
+.see-more-button {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    display: inline;
+    padding: 0 0 0 5px;
+    font-weight: bold;
 }
