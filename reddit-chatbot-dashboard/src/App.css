@@ -219,3 +219,22 @@ a:hover {
     padding: 0 0 0 5px;
     font-weight: bold;
 }
+/* Find this existing rule in your App.css */
+.selftext-preview {
+  color: var(--text-secondary);
+  white-space: pre-wrap; /* This should already be here */
+  word-break: break-word; /* This should already be here */
+  margin-bottom: 5px; /* Add this to create a small space above the button */
+}
+
+/* Add this new rule to the end of your file */
+.see-more-button {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 0;
+    font-weight: bold;
+    font-family: inherit;
+    font-size: 0.9rem;
+}

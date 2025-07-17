@@ -14,27 +14,36 @@ function App() {
       const res = await fetch(`${API_URL}/suggestions`);
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
-      const thoughts = {}, exp = {};
-      data.forEach(post => {
-        thoughts[post.id] = initialThoughts[post.id] || ''; // Preserve existing thoughts
-        exp[post.id] = expanded[post.id] || false;
+      
+      // Initialize state for any new posts without overwriting existing state
+      setInitialThoughts(prev => {
+        const newThoughts = { ...prev };
+        data.forEach(post => { if (newThoughts[post.id] === undefined) newThoughts[post.id] = ''; });
+        return newThoughts;
       });
-      setInitialThoughts(thoughts);
-      setExpanded(exp);
+      setExpanded(prev => {
+        const newExpanded = { ...prev };
+        data.forEach(post => { if (newExpanded[post.id] === undefined) newExpanded[post.id] = false; });
+        return newExpanded;
+      });
+
       data.sort((a, b) => {
         const aPri = a.subreddit?.toLowerCase() === 'smpchat';
         const bPri = b.subreddit?.toLowerCase() === 'smpchat';
         if (aPri && !bPri) return -1;
         if (!aPri && bPri) return 1;
-        return (b.added_at || 0) - (a.added_at || 0); // Sort by time added
+        return (b.added_at || 0) - (a.added_at || 0);
       });
       setPendingComments(data);
     } catch (err) {
       console.error('Error fetching suggestions:', err);
     }
-  }, [API_URL, initialThoughts, expanded]); // Add dependencies
+  }, [API_URL]);
 
-  useEffect(() => { fetchSuggestions(); }, [fetchSuggestions]);
+  // This useEffect now runs only once when the app loads
+  useEffect(() => {
+    fetchSuggestions();
+  }, [fetchSuggestions]);
 
   const handleEdit = (id, field, value) => {
     if (field === 'thoughts') {
@@ -44,7 +53,6 @@ function App() {
     }
   };
   
-  // (All other functions like handleGenerate, handleAction, etc. remain the same)
   const toggleExpand = id => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
   const openLightbox = url => setLightboxImage(url);
   const closeLightbox = () => setLightboxImage(null);
@@ -61,14 +69,13 @@ function App() {
       const json = await res.json();
       if (!res.ok) {
         alert(json.error || 'Generation failed');
-        setPendingComments(prev => prev.map(p => p.id === id ? { ...p, suggestedComment: '' } : p)); // Clear "Generating..." on failure
+        setPendingComments(prev => prev.map(p => p.id === id ? { ...p, suggestedComment: '' } : p));
         return;
       }
       setPendingComments(prev => prev.map(p => p.id === id ? { ...p, suggestedComment: json.suggestedComment || '' } : p));
     } catch (err) {
       console.error('Generate error:', err);
       alert('Failed to generate. Check console for details.');
-      fetchSuggestions(); // Re-fetch to get original state
     }
   };
 
@@ -76,7 +83,7 @@ function App() {
     const post = pendingComments.find(p => p.id === id);
     let url = '', opts = {};
     if (actionType === 'approve') {
-      if (!post.suggestedComment?.trim()) { alert('Please generate a comment first.'); return; }
+      if (!post.suggestedComment?.trim() || post.suggestedComment === 'Generating...') { alert('Please generate a valid comment first.'); return; }
       url = `${API_URL}/suggestions/${id}/approve-and-post`;
       opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approved_comment: post.suggestedComment }) };
     } else if (actionType === 'reject') {
@@ -91,12 +98,21 @@ function App() {
     } else { return; }
     try {
       const res = await fetch(url, opts);
-      if (!res.ok) throw new Error( (await res.json()).error || 'Action failed' );
+      if (!res.ok) throw new Error((await res.json()).error || 'Action failed');
       setPendingComments(prev => prev.filter(p => p.id !== id));
     } catch (err) {
       console.error('Action error:', err);
       alert(`Action failed: ${err.message}`);
     }
+  };
+  
+  // This helper function correctly truncates text to a specific number of lines
+  const renderText = (text, lineLimit) => {
+    const lines = text.split('\n');
+    if (lines.length <= lineLimit) {
+      return text;
+    }
+    return lines.slice(0, lineLimit).join('\n') + '...';
   };
 
   return (
@@ -118,14 +134,17 @@ function App() {
             </div>
 
             {c.redditPostSelftext && (
-              <p className="selftext-preview">
-                {expanded[c.id] ? c.redditPostSelftext : `${c.redditPostSelftext.substring(0, 200)}...`}
-                {c.redditPostSelftext.length > 200 && 
+              // The button is now separate from the text for stability
+              <div>
+                <p className="selftext-preview">
+                  {expanded[c.id] ? c.redditPostSelftext : renderText(c.redditPostSelftext, 2)}
+                </p>
+                {c.redditPostSelftext.split('\n').length > 2 && 
                   <button className="see-more-button" onClick={() => toggleExpand(c.id)}>
                     {expanded[c.id] ? 'Show Less' : 'See More'}
                   </button>
                 }
-              </p>
+              </div>
             )}
 
             {c.image_urls && c.image_urls.length > 0 && (
@@ -144,7 +163,7 @@ function App() {
                 <label className="textarea-label">Suggested Comment:</label>
                 <textarea className="suggested-textarea" rows={4} value={c.suggestedComment} onChange={e => handleEdit(c.id, 'suggestion', e.target.value)} />
                 <div className="actions">
-                  <button className="generate-button" onClick={() => handleAction(c.id, 'approve')}>Approve & Post</button>
+                  <button className="approve-button" onClick={() => handleAction(c.id, 'approve')}>Approve & Post</button>
                   <button className="reject-button" onClick={() => handleAction(c.id, 'reject')}>Reject</button>
                 </div>
               </>
