@@ -26,8 +26,12 @@ if missing:
     print(f"❌ Missing required environment variables: {', '.join(missing)} – exiting.")
     exit(1)
 
-# Determine the correct suggestions endpoint
-SUGGESTIONS_URL = f"{FLASK_BACKEND_URL}/suggestions"
+# --- CORRECTED URL LOGIC ---
+# This new logic correctly builds the suggestions URL without duplication.
+if FLASK_BACKEND_URL.endswith('/suggestions'):
+    SUGGESTIONS_URL = FLASK_BACKEND_URL
+else:
+    SUGGESTIONS_URL = f"{FLASK_BACKEND_URL}/suggestions"
 
 # Initialize Reddit client
 reddit = praw.Reddit(
@@ -50,14 +54,15 @@ def get_posted_submission_ids():
     """Connects to the DB and retrieves a set of all submission IDs that have been posted."""
     posted_ids = set()
     try:
-        with sqlite3.connect("bot_data.db") as conn:
+        # Use a temporary file path for the DB if running in a read-only environment
+        db_path = os.environ.get("DB_PATH", "bot_data.db")
+        with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
-            # Ensure the table exists before querying
             cursor.execute("CREATE TABLE IF NOT EXISTS posted_submissions (submission_id TEXT UNIQUE NOT NULL)")
             cursor.execute("SELECT submission_id FROM posted_submissions")
             rows = cursor.fetchall()
             posted_ids.update(row[0] for row in rows)
-        print(f"Found {len(posted_ids)} previously posted submission IDs in the database.")
+        print(f"Found {len(posted_ids)} previously posted submission IDs.")
     except Exception as e:
         print(f"Error connecting to database to get posted IDs: {e}")
     return posted_ids
@@ -75,23 +80,17 @@ def get_new_smp_posts(subreddit_name: str, limit: int = 25) -> list:
     posted_ids = get_posted_submission_ids()
 
     for sub in reddit.subreddit(subreddit_name).new(limit=limit):
-        # --- LOGIC REORDERED FOR EFFICIENCY ---
-
-        # 1. Check time (fast)
         if sub.created_utc < cutoff:
-            break # Stop if posts are too old
+            break
 
-        # 2. Check local DB of bot posts (fast)
         if sub.id in posted_ids:
             continue
 
-        # 3. Check for relevance with keywords (fast)
         title_text = sub.title.lower()
         body_text = sub.selftext.lower()
         if subreddit_name.lower() != "smpchat" and not any(k in title_text or k in body_text for k in KEYWORDS):
             continue
         
-        # 4. Check for manual comments (slow - DO THIS LAST)
         sub.comments.replace_more(limit=0)
         if any(
             comment.author and comment.author.name.lower() == BOT_USERNAME
@@ -100,7 +99,6 @@ def get_new_smp_posts(subreddit_name: str, limit: int = 25) -> list:
             print(f" - Skipping '{sub.title}' (already commented manually).")
             continue
 
-        # If all checks pass, gather the post data
         images = []
         if hasattr(sub, "gallery_data") and sub.gallery_data:
             for item in sub.gallery_data["items"]:
