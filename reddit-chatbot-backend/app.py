@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
-DATABASE_FILE = 'bot_data.db'
+DATABASE_FILE = 'bot_data_v2.db'
 
 # region Sitemap Integration
 SITEMAP_URLS = ['https://scalpsusa.com/post-sitemap.xml', 'https://scalpsusa.com/page-sitemap.xml']
