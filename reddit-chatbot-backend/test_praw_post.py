@@ -1,47 +1,50 @@
-import praw
 import os
-import time # For a small delay
+import time
+from dotenv import load_dotenv
+import praw
 
-# --- Reddit API Credentials (Your actual values) ---
-REDDIT_CLIENT_ID = "LIMpbhTAYeb9ERnFGU0ryA"
-REDDIT_CLIENT_SECRET = "PKaho8HfTu5mdObB653t21NGnwWKGQ"
-REDDIT_USERNAME = "Alex_Ash_"
-REDDIT_PASSWORD = ""
-REDDIT_USER_AGENT = "desktop:smp_bot_for_alex:v0.1 (by /u/Alex_Ash_)" # Use the exact string we discussed
+# Load environment variables from .env file
+load_dotenv()
 
-# --- PRAW Reddit Instance ---
-# This should be the same as your reddit_poster in app.py
-reddit = praw.Reddit(
-    client_id=REDDIT_CLIENT_ID,
-    client_secret=REDDIT_CLIENT_SECRET,
-    username=REDDIT_USERNAME,
-    password=REDDIT_PASSWORD,
-    user_agent=REDDIT_USER_AGENT
-)
+# --- Load Reddit API Credentials from .env file ---
+REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
+REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
+REDDIT_REFRESH_TOKEN = os.getenv("REDDIT_REFRESH_TOKEN")
+REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT")
 
 # --- Your Test Post ID ---
-# Make sure this is YOUR specific test post from r/test
+# You can get this from the URL of any post you want to test commenting on.
+# Example: https://www.reddit.com/r/test/comments/1lkgx32/
 TEST_POST_ID = "1lkgx32" 
 
 if __name__ == "__main__":
-    print("Attempting to connect to Reddit and post a test comment...")
-    try:
-        # Verify login by fetching user info
-        print(f"Logged in as: /u/{reddit.user.me()}")
+    if not all([REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_REFRESH_TOKEN, REDDIT_USER_AGENT]):
+        print("❌ Missing required Reddit credentials in your .env file. Exiting.")
+    else:
+        try:
+            # Initialize PRAW with the refresh token method
+            reddit = praw.Reddit(
+                client_id=REDDIT_CLIENT_ID,
+                client_secret=REDDIT_CLIENT_SECRET,
+                refresh_token=REDDIT_REFRESH_TOKEN,
+                user_agent=REDDIT_USER_AGENT
+            )
+            
+            print(f"✅ Successfully authenticated with Reddit as: /u/{reddit.user.me().name}")
 
-        # Get the submission object for your test post
-        submission = reddit.submission(id=TEST_POST_ID)
-        print(f"Found test post: '{submission.title}' by /u/{submission.author}")
+            submission = reddit.submission(id=TEST_POST_ID)
+            print(f"✅ Found test post: '{submission.title}'")
 
-        # Define the test comment content
-        test_comment_content = f"This is an automated test comment from PRAW script (timestamp: {time.time()})."
-        print(f"Attempting to post: '{test_comment_content}'")
+            comment_content = f"This is an automated test comment (Timestamp: {int(time.time())})."
+            print(f"Attempting to post: '{comment_content}'")
+            
+            new_comment = submission.reply(comment_content)
+            
+            print("\n--- SUCCESS! ---")
+            print(f"✅ Comment posted successfully.")
+            print(f"View it here: https://reddit.com{new_comment.permalink}")
 
-        # Post the comment
-        new_comment = submission.reply(test_comment_content)
-        print(f"SUCCESS! Comment posted with ID: {new_comment.id}")
-        print(f"View comment: {new_comment.permalink}")
-
-    except Exception as e:
-        print(f"FAILED to post comment: {e}")
-        print("Please double-check your Reddit API credentials and ensure your Reddit app has 'submit' permissions.")
+        except Exception as e:
+            print(f"\n--- FAILED ---")
+            print(f"❌ An error occurred: {e}")
+            print("Please double-check your credentials in the .env file and ensure your Reddit app has 'submit' permissions.")
