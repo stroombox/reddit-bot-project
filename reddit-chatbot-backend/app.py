@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
-DATABASE_FILE = 'bot_data_v2.db'
+DATABASE_FILE = 'bot_data_v2.db' # Using the new database file
 
 # region Sitemap Integration
 SITEMAP_URLS = ['https://scalpsusa.com/post-sitemap.xml', 'https://scalpsusa.com/page-sitemap.xml']
@@ -174,6 +174,3 @@ def delete_suggestion(submission_id):
     conn.close()
     return jsonify({"message":"deleted"}), 200
 # endregion
-
-if __name__=='__main__':
-    app.run(host='0.0.0.0', port
