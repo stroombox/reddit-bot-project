@@ -15,7 +15,16 @@ function App() {
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
       
-      // Initialize state for any new posts without overwriting existing state
+      data.sort((a, b) => {
+        const aPri = a.subreddit?.toLowerCase() === 'smpchat';
+        const bPri = b.subreddit?.toLowerCase() === 'smpchat';
+        if (aPri && !bPri) return -1;
+        if (!aPri && bPri) return 1;
+        return (b.added_at || 0) - (a.added_at || 0);
+      });
+
+      setPendingComments(data);
+      // Initialize state for new posts without wiping existing user input
       setInitialThoughts(prev => {
         const newThoughts = { ...prev };
         data.forEach(post => { if (newThoughts[post.id] === undefined) newThoughts[post.id] = ''; });
@@ -26,15 +35,6 @@ function App() {
         data.forEach(post => { if (newExpanded[post.id] === undefined) newExpanded[post.id] = false; });
         return newExpanded;
       });
-
-      data.sort((a, b) => {
-        const aPri = a.subreddit?.toLowerCase() === 'smpchat';
-        const bPri = b.subreddit?.toLowerCase() === 'smpchat';
-        if (aPri && !bPri) return -1;
-        if (!aPri && bPri) return 1;
-        return (b.added_at || 0) - (a.added_at || 0);
-      });
-      setPendingComments(data);
     } catch (err) {
       console.error('Error fetching suggestions:', err);
     }
@@ -67,21 +67,20 @@ function App() {
         body: JSON.stringify({ user_thought: thoughts })
       });
       const json = await res.json();
-      if (!res.ok) {
-        alert(json.error || 'Generation failed');
-        setPendingComments(prev => prev.map(p => p.id === id ? { ...p, suggestedComment: '' } : p));
-        return;
-      }
+      if (!res.ok) throw new Error(json.error || 'Generation failed');
       setPendingComments(prev => prev.map(p => p.id === id ? { ...p, suggestedComment: json.suggestedComment || '' } : p));
     } catch (err) {
       console.error('Generate error:', err);
-      alert('Failed to generate. Check console for details.');
+      alert(`Failed to generate: ${err.message}`);
+      // Revert "Generating..." on failure
+      setPendingComments(prev => prev.map(p => p.id === id ? { ...p, suggestedComment: '' } : p));
     }
   };
 
   const handleAction = async (id, actionType) => {
     const post = pendingComments.find(p => p.id === id);
     let url = '', opts = {};
+
     if (actionType === 'approve') {
       if (!post.suggestedComment?.trim() || post.suggestedComment === 'Generating...') { alert('Please generate a valid comment first.'); return; }
       url = `${API_URL}/suggestions/${id}/approve-and-post`;
@@ -96,45 +95,37 @@ function App() {
       url = `${API_URL}/suggestions/${id}/post-direct`;
       opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ direct_comment: txt }) };
     } else { return; }
+
     try {
       const res = await fetch(url, opts);
-      if (!res.ok) throw new Error((await res.json()).error || 'Action failed');
+      if (!res.ok) throw new Error( (await res.json()).error || 'Action failed' );
       setPendingComments(prev => prev.filter(p => p.id !== id));
     } catch (err) {
       console.error('Action error:', err);
       alert(`Action failed: ${err.message}`);
     }
   };
-  
-  // This helper function correctly truncates text to a specific number of lines
+
   const renderText = (text, lineLimit) => {
     const lines = text.split('\n');
-    if (lines.length <= lineLimit) {
-      return text;
-    }
-    return lines.slice(0, lineLimit).join('\n') + '...';
+    return lines.length <= lineLimit ? text : lines.slice(0, lineLimit).join('\n') + '...';
   };
 
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>Reddit Comment Review</h1>
-      </header>
+      <header className="App-header"><h1>Reddit Comment Review</h1></header>
       <div className="comment-list">
         {pendingComments.map(c => (
           <div key={c.id} className="comment-card">
             <div className="card-header">
               <div className="title-author-group">
-                <a href={c.redditPostUrl} target="_blank" rel="noopener noreferrer" className="post-title">
-                  {c.redditPostTitle}
-                </a>
+                <a href={c.redditPostUrl} target="_blank" rel="noopener noreferrer" className="post-title">{c.redditPostTitle}</a>
                 <span className="author-name">by u/{c.author}</span>
               </div>
               <span className="subreddit-tag">r/{c.subreddit}</span>
             </div>
 
             {c.redditPostSelftext && (
-              // The button is now separate from the text for stability
               <div>
                 <p className="selftext-preview">
                   {expanded[c.id] ? c.redditPostSelftext : renderText(c.redditPostSelftext, 2)}
